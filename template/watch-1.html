@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{{ file_name }} — Watch</title>
+
+<!-- Plyr: gives us the control shell (skip buttons, CC menu, settings panel, fullscreen) -->
+<link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css">
+
+<style>
+  :root{
+    --bg:#0f0f10;
+    --panel:#1a1a1c;
+    --accent:#8b5cf6;      /* violet — matches the seek-bar accent */
+    --accent-2:#a78bfa;
+    --text:#f2f2f3;
+    --text-dim:#9a9aa2;
+  }
+
+  *{ box-sizing:border-box; }
+
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:24px 16px 48px;
+  }
+
+  .wrap{
+    width:100%;
+    max-width:960px;
+  }
+
+  .title{
+    font-size:1.05rem;
+    font-weight:600;
+    margin:0 0 14px;
+    color:var(--text);
+    word-break:break-word;
+  }
+
+  .player-shell{
+    position:relative;
+    width:100%;
+    border-radius:12px;
+    overflow:hidden;
+    background:#000;
+    box-shadow:0 8px 40px rgba(0,0,0,0.5);
+  }
+
+  /* ---- Plyr theme overrides: violet accent, dark chrome ---- */
+  .plyr{ --plyr-color-main: var(--accent); }
+  .plyr--video{ border-radius:12px; }
+  .plyr__control--overlaid{
+    background: rgba(139,92,246,0.85);
+  }
+  .plyr__control--overlaid:hover{ background: var(--accent); }
+  .plyr__controls{
+    background: linear-gradient(transparent, rgba(0,0,0,0.75));
+  }
+  .plyr__menu__container{
+    background: rgba(20,20,22,0.97);
+    backdrop-filter: blur(6px);
+  }
+  .plyr__control.plyr__tab-focus,
+  .plyr__control:hover{
+    background: var(--accent);
+  }
+
+  .meta-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:14px;
+    color:var(--text-dim);
+    font-size:0.85rem;
+  }
+
+  .meta-row a{
+    color:var(--accent-2);
+    text-decoration:none;
+    font-weight:600;
+  }
+  .meta-row a:hover{ text-decoration:underline; }
+
+  .fallback-note{
+    display:none;
+    background:var(--panel);
+    border:1px solid #2a2a2e;
+    border-radius:10px;
+    padding:14px 16px;
+    margin-top:16px;
+    font-size:0.85rem;
+    color:var(--text-dim);
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1 class="title">{{ file_name }}</h1>
+
+  <div class="player-shell">
+    <video id="player" playsinline controls data-poster="{{ poster_url|default('') }}">
+
+      {# --- Direct sources for quality switching (Plyr reads these as quality levels) --- #}
+      {% for src in sources %}
+      <source src="{{ src.url }}" type="video/mp4" size="{{ src.height }}">
+      {% endfor %}
+
+      {# --- Subtitle/caption tracks, one per language --- #}
+      {% for sub in subtitles %}
+      <track kind="captions" label="{{ sub.label }}" srclang="{{ sub.lang }}" src="{{ sub.url }}" {% if loop.first %}default{% endif %}>
+      {% endfor %}
+
+      Your browser doesn't support HTML5 video.
+    </video>
+  </div>
+
+  <div class="meta-row">
+    <span>Size: {{ file_size }}</span>
+    <a href="{{ download_link }}">⬇ Download instead</a>
+  </div>
+
+  <div id="hlsFallback" class="fallback-note">
+    Playing via adaptive streaming (HLS) — quality switches automatically based on your connection.
+  </div>
+</div>
+
+<!-- Plyr + hls.js from CDN -->
+<script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+
+<script>
+/*
+  Two playback modes are wired up below:
+
+  1) DIRECT MP4 (what your current aiohttp Range-streaming backend serves).
+     Plyr reads the <source size="..."> attributes above and builds the
+     Auto/720p/480p/... quality menu from them. This works today with
+     zero backend changes IF you pass multiple encoded resolutions in
+     `sources`. If you only have one file, Plyr just hides the quality menu.
+
+  2) HLS (adaptive bitrate + multi-language AUDIO tracks, like the
+     Japanese/English/Hindi picker in your screenshot). This requires
+     your backend to serve an .m3u8 master playlist instead of a raw
+     .mp4 — that needs an ffmpeg transcode step, not just Flask/aiohttp
+     routing. If `hlsSrc` is set below, this takes over automatically.
+*/
+
+const video = document.getElementById('player');
+
+// Set this from your backend if/when you add HLS master playlists.
+// e.g. hlsSrc = "{{ hls_url|default('') }}";
+const hlsSrc = "{{ hls_url|default('') }}";
+
+const plyrOptions = {
+  seekTime: 10,                 // powers the ±10s skip buttons
+  keyboard: { focused: true, global: true },
+  tooltips: { controls: true, seek: true },
+  controls: [
+    'play-large', 'rewind', 'play', 'fast-forward',
+    'progress', 'current-time', 'duration',
+    'mute', 'volume', 'captions', 'settings',
+    'pip', 'airplay', 'fullscreen'
+  ],
+  settings: ['captions', 'quality', 'speed', 'loop'],
+  i18n: { qualityLabel: { 0: 'Auto' } }
+};
+
+let player;
+
+if (hlsSrc && Hls.isSupported()) {
+  // ---- HLS mode: adaptive quality + multi-language audio ----
+  document.getElementById('hlsFallback').style.display = 'block';
+
+  const hls = new Hls();
+  hls.loadSource(hlsSrc);
+  hls.attachMedia(video);
+
+  hls.on(Hls.Events.MANIFEST_PARSED, () => {
+    // Build the quality list Plyr shows in Settings > Quality
+    const availableQualities = hls.levels.map(l => l.height);
+    availableQualities.unshift(0); // 0 = "Auto"
+
+    plyrOptions.quality = {
+      default: 0,
+      options: availableQualities,
+      forced: true,
+      onChange: (newQuality) => {
+        hls.levels.forEach((level, levelIndex) => {
+          if (level.height === newQuality) {
+            hls.currentLevel = levelIndex;
+          }
+        });
+        if (newQuality === 0) hls.currentLevel = -1; // -1 tells hls.js to go back to Auto
+      }
+    };
+
+    player = new Plyr(video, plyrOptions);
+  });
+
+  // Multi-language audio tracks (Japanese / English / Hindi style picker)
+  hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+    if (!hls.audioTracks || hls.audioTracks.length < 2) return;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'plyr__control';
+    btn.setAttribute('aria-label', 'Audio track');
+    btn.textContent = '🌐';
+
+    btn.addEventListener('click', () => {
+      const current = hls.audioTrack;
+      const next = (current + 1) % hls.audioTracks.length;
+      hls.audioTrack = next;
+      btn.title = hls.audioTracks[next].name || `Track ${next + 1}`;
+    });
+
+    const controls = document.querySelector('.plyr__controls');
+    if (controls) controls.appendChild(btn);
+  });
+
+  hls.on(Hls.Events.ERROR, (event, data) => {
+    if (data.fatal) console.error('HLS fatal error:', data);
+  });
+
+} else if (hlsSrc && video.canPlayType('application/vnd.apple.mpegurl')) {
+  // Safari has native HLS support, no hls.js needed
+  video.src = hlsSrc;
+  document.getElementById('hlsFallback').style.display = 'block';
+  player = new Plyr(video, plyrOptions);
+
+} else {
+  // ---- Direct MP4 mode (current EvaMovies backend) ----
+  // Plyr auto-builds the quality menu from the <source size="..."> tags.
+  player = new Plyr(video, plyrOptions);
+}
+</script>
+</body>
+</html>
