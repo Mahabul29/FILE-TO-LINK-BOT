@@ -38,10 +38,6 @@ async def video_play(request):
         if "video" in mime_type:
             icon = "🎬"
             file_type = "Video"
-            # Plyr gives us skip ±10s, speed control, PiP, fullscreen and a
-            # CC menu out of the box. Quality switching (Auto/720p/480p) isn't
-            # wired here since this route serves a single passthrough stream —
-            # that needs pre-encoded resolutions or HLS on the backend first.
             player_tag = f'''
             <div class="player-wrap">
                 <video id="player" playsinline preload="metadata" data-plyr>
@@ -125,7 +121,6 @@ async def video_play(request):
                 radial-gradient(ellipse 60% 40% at 50% 0%, rgba(36,129,204,0.07) 0%, transparent 70%);
         }}
 
-        /* ── Header ── */
         .header {{
             width: 100%;
             max-width: 860px;
@@ -167,7 +162,6 @@ async def video_play(request):
             text-transform: uppercase;
         }}
 
-        /* ── Info box ── */
         .info-box {{
             background: var(--surface);
             border: 1px solid var(--border);
@@ -201,7 +195,6 @@ async def video_play(request):
             word-break: break-all;
         }}
 
-        /* ── Player ── */
         .player-wrap {{
             width: 100%;
             max-width: 860px;
@@ -229,7 +222,6 @@ async def video_play(request):
             width: 100%;
         }}
 
-        /* ── Plyr theme (matches the Telegram-blue accent) ── */
         .plyr {{ --plyr-color-main: var(--accent); border-radius: 12px; }}
         .plyr__control--overlaid {{ background: rgba(36,129,204,0.85); }}
         .plyr__control--overlaid:hover {{ background: var(--accent); }}
@@ -238,7 +230,6 @@ async def video_play(request):
         .plyr__control.plyr__tab-focus,
         .plyr__control:hover {{ background: var(--accent); }}
 
-        /* ── Warning ── */
         .warn {{
             color: var(--warn-text);
             background: var(--warn-bg);
@@ -252,7 +243,6 @@ async def video_play(request):
             text-align: center;
         }}
 
-        /* ── Buttons ── */
         .btn-row {{
             display: flex;
             gap: 10px;
@@ -291,7 +281,6 @@ async def video_play(request):
             background: #155fa0;
         }}
 
-        /* ── Divider ── */
         .divider {{
             width: 100%;
             max-width: 860px;
@@ -359,8 +348,6 @@ async def video_play(request):
             }});
         }}
 
-        // Skip ±10s, speed control, PiP, fullscreen, CC menu (shows only if
-        // a <track> is present — none is served yet, so it stays hidden).
         const playerEl = document.querySelector('[data-plyr]');
         if (playerEl) {{
             new Plyr(playerEl, {{
@@ -371,7 +358,7 @@ async def video_play(request):
                 controls: [
                     'play-large', 'rewind', 'play', 'fast-forward',
                     'progress', 'current-time', 'duration',
-                    'mute', 'volume', 'captions', 'settings',
+                    'mute', 'captions', 'settings',
                     'pip', 'fullscreen'
                 ]
             }});
@@ -396,7 +383,6 @@ async def stream_handler(request):
         file_name, mime_type, file_size = _media_info(media)
         content_type = mime_type if mime_type != "unknown" else "application/octet-stream"
 
-        # Parse Range header (e.g. "bytes=0-1023")
         range_header = request.headers.get("Range")
         start = 0
         end = file_size - 1 if file_size else None
@@ -430,8 +416,6 @@ async def stream_handler(request):
         response = web.StreamResponse(status=status, headers=headers)
         await response.prepare(request)
 
-        # stream_media offset/limit support depends on your pyrogram/telethon version;
-        # pass offset if supported, else stream from beginning (player will still seek via Range)
         async for chunk in bot_client.stream_media(msg, offset=start // (1024 * 1024)):
             await response.write(chunk)
 
