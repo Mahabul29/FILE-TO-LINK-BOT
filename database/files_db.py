@@ -1,7 +1,10 @@
 import time
-from database.users_db import db
+import motor.motor_asyncio
+from config import DATABASE_URI
 
-files_col = db.db.files
+_client = motor.motor_asyncio.AsyncIOMotorClient(DATABASE_URI)
+_db = _client["filetolinkbot"]
+files_col = _db.files
 
 
 async def save_file(file_id, file_name, file_size, mime_type, uploader_id):
