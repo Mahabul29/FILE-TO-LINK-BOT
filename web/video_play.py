@@ -1,8 +1,6 @@
-import asyncio
 import logging
 from aiohttp import web
 from config import BIN_CHANNEL, FQDN
-from web.media_probe import probe_tracks
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +26,6 @@ async def video_play(request):
     file_id = request.match_info.get("file_id")
     bot_client = request.app["bot_client"]
 
-    audio_options = ""
-    subtitle_options = "<option value=\"off\">Subtitles: Off</option>"
-
     try:
         msg = await bot_client.get_messages(int(BIN_CHANNEL), int(file_id))
         media = msg.document or msg.video or msg.audio or msg.photo
@@ -43,25 +38,12 @@ async def video_play(request):
         if "video" in mime_type:
             icon = "🎬"
             file_type = "Video"
-
-            tracks = await probe_tracks(bot_client, file_id)
-            audio_options = "".join(
-                f'<option value="{a["index"]}">{a["lang"]}</option>' for a in tracks["audio"]
-            )
-            subtitle_options += "".join(
-                f'<option value="{s["index"]}">{s["lang"]}</option>' for s in tracks["subtitle"]
-            )
-
             player_tag = f'''
             <div class="player-wrap">
                 <video id="player" playsinline preload="metadata" data-plyr>
                     <source src="/stream/{file_id}" type="{mime_type}">
                     Your browser does not support this video.
                 </video>
-            </div>
-            <div class="track-controls">
-                <select id="audioSelect">{audio_options}</select>
-                <select id="subtitleSelect">{subtitle_options}</select>
             </div>
             '''
             note = ""
@@ -219,7 +201,7 @@ async def video_play(request):
             border-radius: 12px;
             overflow: hidden;
             background: #000;
-            margin-bottom: 10px;
+            margin-bottom: 16px;
             border: 1px solid var(--border);
         }}
         .player-wrap video,
@@ -236,24 +218,8 @@ async def video_play(request):
             align-items: center;
             justify-content: center;
         }}
-        .audio-wrap audio {{ width: 100%; }}
-
-        .track-controls {{
+        .audio-wrap audio {{
             width: 100%;
-            max-width: 860px;
-            display: flex;
-            gap: 10px;
-            margin-bottom: 16px;
-        }}
-        .track-controls select {{
-            flex: 1;
-            background: var(--surface);
-            color: var(--text);
-            border: 1px solid var(--border);
-            border-radius: 9px;
-            padding: 9px 10px;
-            font-family: 'DM Mono', monospace;
-            font-size: 12px;
         }}
 
         .plyr {{ --plyr-color-main: var(--accent); border-radius: 12px; }}
@@ -303,11 +269,25 @@ async def video_play(request):
             letter-spacing: 0.01em;
         }}
         .btn:active {{ transform: scale(0.97); }}
-        .btn-download {{ background: var(--green); }}
+        .btn-download {{
+            background: var(--green);
+        }}
         .btn-download:hover {{ background: var(--green-hover); }}
-        .btn-copy {{ background: var(--accent); }}
+        .btn-copy {{
+            background: var(--accent);
+        }}
         .btn-copy:hover {{ background: var(--accent-hover); }}
-        .btn-copy.copied {{ background: #155fa0; }}
+        .btn-copy.copied {{
+            background: #155fa0;
+        }}
+
+        .divider {{
+            width: 100%;
+            max-width: 860px;
+            height: 1px;
+            background: var(--border);
+            margin: 18px 0;
+        }}
 
         @media (max-width: 480px) {{
             .file-title {{ font-size: 15px; }}
@@ -369,9 +349,8 @@ async def video_play(request):
         }}
 
         const playerEl = document.querySelector('[data-plyr]');
-        let player = null;
         if (playerEl) {{
-            player = new Plyr(playerEl, {{
+            new Plyr(playerEl, {{
                 seekTime: 10,
                 autoplay: true,
                 settings: ['captions', 'speed', 'loop'],
@@ -384,35 +363,6 @@ async def video_play(request):
                 ]
             }});
         }}
-
-        function applySelection() {{
-            if (!player) return;
-            const audioIdx = document.getElementById('audioSelect')?.value;
-            const subIdx = document.getElementById('subtitleSelect')?.value;
-
-            const tracks = [];
-            if (subIdx && subIdx !== 'off') {{
-                tracks.push({{
-                    kind: 'captions',
-                    label: 'Subtitle',
-                    srclang: 'en',
-                    src: `/subtitle/{file_id}/${{subIdx}}.vtt`,
-                    default: true
-                }});
-            }}
-
-            player.source = {{
-                type: 'video',
-                sources: [{{
-                    src: `/stream/{file_id}${{audioIdx ? '?audio=' + audioIdx : ''}}`,
-                    type: 'video/x-matroska'
-                }}],
-                tracks: tracks
-            }};
-        }}
-
-        document.getElementById('audioSelect')?.addEventListener('change', applySelection);
-        document.getElementById('subtitleSelect')?.addEventListener('change', applySelection);
     </script>
 </body>
 </html>"""
@@ -420,11 +370,8 @@ async def video_play(request):
 
 
 async def stream_handler(request):
-    """Streams file. Passthrough by default (supports Range/seeking).
-    If ?audio=N is given, remuxes via ffmpeg to select that audio track
-    (no seeking support on this path, since ffmpeg output isn't range-addressable)."""
+    """Streams file with proper Range request support for seeking."""
     file_id = request.match_info.get("file_id")
-    audio_index = request.query.get("audio")
     bot_client = request.app["bot_client"]
 
     try:
@@ -436,159 +383,47 @@ async def stream_handler(request):
         file_name, mime_type, file_size = _media_info(media)
         content_type = mime_type if mime_type != "unknown" else "application/octet-stream"
 
-        if audio_index is None:
-            # Original passthrough path with Range support
-            range_header = request.headers.get("Range")
-            start = 0
-            end = file_size - 1 if file_size else None
+        range_header = request.headers.get("Range")
+        start = 0
+        end = file_size - 1 if file_size else None
 
-            if range_header and file_size:
-                try:
-                    range_val = range_header.strip().replace("bytes=", "")
-                    parts = range_val.split("-")
-                    start = int(parts[0]) if parts[0] else 0
-                    end = int(parts[1]) if parts[1] else file_size - 1
-                    end = min(end, file_size - 1)
-                except Exception:
-                    return web.Response(text="❌ Invalid Range header", status=416)
-
-            is_partial = range_header and file_size
-            status = 206 if is_partial else 200
-
-            headers = {
-                "Content-Type": content_type,
-                "Content-Disposition": f'inline; filename="{file_name}"',
-                "Accept-Ranges": "bytes",
-            }
-
-            if file_size:
-                if is_partial:
-                    headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-                    headers["Content-Length"] = str(end - start + 1)
-                else:
-                    headers["Content-Length"] = str(file_size)
-
-            response = web.StreamResponse(status=status, headers=headers)
-            await response.prepare(request)
-
-            async for chunk in bot_client.stream_media(msg, offset=start // (1024 * 1024)):
-                await response.write(chunk)
-
-            await response.write_eof()
-            return response
-
-        else:
-            # ffmpeg remux path: pick chosen audio track, copy codecs, no re-encode
-            cmd = [
-                "ffmpeg", "-v", "quiet",
-                "-i", "pipe:0",
-                "-map", "0:v:0",
-                "-map", f"0:{audio_index}",
-                "-c", "copy",
-                "-f", "matroska",
-                "pipe:1"
-            ]
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-
-            async def feed():
-                try:
-                    async for chunk in bot_client.stream_media(msg):
-                        proc.stdin.write(chunk)
-                        await proc.stdin.drain()
-                except Exception as e:
-                    logger.warning(f"feed error: {e}")
-                finally:
-                    try:
-                        proc.stdin.close()
-                    except Exception:
-                        pass
-
-            feed_task = asyncio.create_task(feed())
-
-            response = web.StreamResponse(headers={
-                "Content-Type": "video/x-matroska",
-                "Content-Disposition": f'inline; filename="{file_name}"'
-            })
-            await response.prepare(request)
-
-            while True:
-                chunk = await proc.stdout.read(65536)
-                if not chunk:
-                    break
-                await response.write(chunk)
-
-            await feed_task
-            await proc.wait()
-            await response.write_eof()
-            return response
-
-    except Exception as e:
-        logger.error(f"Stream error: {e}")
-        return web.Response(text=f"❌ Error: {e}", status=500)
-
-
-async def subtitle_handler(request):
-    """Extracts one subtitle track as WebVTT for the <track> element."""
-    file_id = request.match_info.get("file_id")
-    track_index = request.match_info.get("index")
-    bot_client = request.app["bot_client"]
-
-    try:
-        msg = await bot_client.get_messages(int(BIN_CHANNEL), int(file_id))
-        media = msg.document or msg.video or msg.audio
-        if not media:
-            return web.Response(text="Not found", status=404)
-
-        cmd = [
-            "ffmpeg", "-v", "quiet",
-            "-i", "pipe:0",
-            "-map", f"0:{track_index}",
-            "-f", "webvtt",
-            "pipe:1"
-        ]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL
-        )
-
-        async def feed():
+        if range_header and file_size:
             try:
-                async for chunk in bot_client.stream_media(msg):
-                    proc.stdin.write(chunk)
-                    await proc.stdin.drain()
-            except Exception as e:
-                logger.warning(f"subtitle feed error: {e}")
-            finally:
-                try:
-                    proc.stdin.close()
-                except Exception:
-                    pass
+                range_val = range_header.strip().replace("bytes=", "")
+                parts = range_val.split("-")
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if parts[1] else file_size - 1
+                end = min(end, file_size - 1)
+            except Exception:
+                return web.Response(text="❌ Invalid Range header", status=416)
 
-        feed_task = asyncio.create_task(feed())
+        is_partial = range_header and file_size
+        status = 206 if is_partial else 200
 
-        response = web.StreamResponse(headers={"Content-Type": "text/vtt"})
+        headers = {
+            "Content-Type": content_type,
+            "Content-Disposition": f'inline; filename="{file_name}"',
+            "Accept-Ranges": "bytes",
+        }
+
+        if file_size:
+            if is_partial:
+                headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+                headers["Content-Length"] = str(end - start + 1)
+            else:
+                headers["Content-Length"] = str(file_size)
+
+        response = web.StreamResponse(status=status, headers=headers)
         await response.prepare(request)
 
-        while True:
-            chunk = await proc.stdout.read(65536)
-            if not chunk:
-                break
+        async for chunk in bot_client.stream_media(msg, offset=start // (1024 * 1024)):
             await response.write(chunk)
 
-        await feed_task
-        await proc.wait()
         await response.write_eof()
         return response
 
     except Exception as e:
-        logger.error(f"Subtitle error: {e}")
+        logger.error(f"Stream error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
 
 
