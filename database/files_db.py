@@ -3,7 +3,7 @@ import motor.motor_asyncio
 from config import DATABASE_URI
 
 _client = motor.motor_asyncio.AsyncIOMotorClient(DATABASE_URI)
-_db = _client["filetolinkbot"]
+_db = _client["FileToLinkBot"]
 files_col = _db.files
 
 
