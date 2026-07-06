@@ -51,13 +51,13 @@ async def home_page(request):
             date_str = datetime.fromtimestamp(ts).strftime("%d %b %Y") if ts else "—"
 
             cards += f"""
-            <a class="card" href="/watch/{file_id}">
+            <a class="card" href="/dl/{file_id}">
                 <div class="card-icon">{icon}</div>
                 <div class="card-body">
                     <div class="card-name">{name}</div>
                     <div class="card-meta">{size} &nbsp;·&nbsp; {date_str}</div>
                 </div>
-                <div class="card-arrow">›</div>
+                <div class="card-arrow">⬇</div>
             </a>
             """
 
@@ -125,7 +125,7 @@ async def home_page(request):
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }}
         .card-meta {{ font-size: 11px; color: var(--muted); margin-top: 3px; }}
-        .card-arrow {{ color: var(--muted); font-size: 20px; }}
+        .card-arrow {{ color: var(--accent); font-size: 18px; }}
         .empty {{
             text-align: center; color: var(--muted);
             padding: 60px 20px; font-size: 13px;
