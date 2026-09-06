@@ -133,6 +133,7 @@ async def video_play(request):
             padding: 12px 16px;
             width: 100%;
             max-width: 850px;
+            margin-top: 15px;
             margin-bottom: 15px;
         }}
         .info-row {{
@@ -160,7 +161,7 @@ async def video_play(request):
             margin-bottom: 15px;
         }}
         video {{
-            border: 2px solid #2481cc;
+            border: 1px solid #2481cc44;
         }}
         .warn {{
             color: #f39c12;
@@ -205,6 +206,9 @@ async def video_play(request):
 
     <div class="title">{icon} {file_name}</div>
 
+    {playable_note}
+    {player_tag}
+
     <div class="info-box">
         <div class="info-row">
             <span class="info-label">📄 File Name</span>
@@ -223,9 +227,6 @@ async def video_play(request):
             <span class="info-value">{file_id}</span>
         </div>
     </div>
-
-    {playable_note}
-    {player_tag}
 
     <div class="top-buttons">
         <a href="{download_url}" class="btn btn-download">⬇ Download</a>
@@ -357,4 +358,3 @@ async def download_handler(request):
     except Exception as e:
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
-        
