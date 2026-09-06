@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 from aiohttp import web
@@ -311,14 +312,27 @@ async def stream_handler(request):
         response = web.StreamResponse(status=status, headers=headers)
         await response.prepare(request)
 
-        if file_size:
-            async for chunk in _chunked_stream(bot_client, msg, start, end):
+        CHUNK_TIMEOUT = 20  # seconds — if Telegram/network stalls this long, give up and close
+
+        try:
+            if file_size:
+                gen = _chunked_stream(bot_client, msg, start, end)
+            else:
+                gen = bot_client.stream_media(msg)
+
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(gen.__anext__(), timeout=CHUNK_TIMEOUT)
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    logger.warning(f"Stream stalled (no data for {CHUNK_TIMEOUT}s) on {file_id}, closing")
+                    break
                 if chunk:
                     await response.write(chunk)
-        else:
-            # No known file_size — fall back to plain sequential stream
-            async for chunk in bot_client.stream_media(msg):
-                await response.write(chunk)
+        except (ConnectionResetError, asyncio.CancelledError):
+            # Client dropped connection (e.g. lost internet) — nothing more to do.
+            pass
 
         await response.write_eof()
         return response
@@ -358,4 +372,4 @@ async def download_handler(request):
     except Exception as e:
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
-        
+            
