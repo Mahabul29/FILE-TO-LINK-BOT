@@ -1,7 +1,7 @@
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import LOG_CHANNEL, FQDN
+from config import BIN_CHANNEL, FQDN
 from database.files_db import save_file
 
 def make_channel_buttons(file_id):
@@ -24,7 +24,9 @@ _MEDIA_FILTER = (
 @Client.on_message(filters.channel & _MEDIA_FILTER, group=1)
 async def channel_file_handler(client, message):
     try:
-        copied = await message.copy(chat_id=LOG_CHANNEL)
+        # Copy into BIN_CHANNEL — this is the channel video_play.py / stream_handler
+        # actually reads files from. Copying anywhere else produces links that 404.
+        copied = await message.copy(chat_id=BIN_CHANNEL)
 
         if not copied:
             return
