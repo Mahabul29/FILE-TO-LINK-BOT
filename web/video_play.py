@@ -16,6 +16,20 @@ def _media_info(media):
     return file_name, mime_type, file_size
 
 
+_ICON_VIDEO = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>'
+_ICON_AUDIO = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>'
+_ICON_DOC = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>'
+
+
+def _type_badge(mime_type):
+    # (label, accent color, svg icon) — same accent system as the home page
+    if "video" in mime_type:
+        return "Video", "#ef6461", _ICON_VIDEO
+    if "audio" in mime_type:
+        return "Audio", "#3ddc97", _ICON_AUDIO
+    return "Document", "#5a7a94", _ICON_DOC
+
+
 async def _get_media(bot_client, file_id):
     msg = await bot_client.get_messages(int(BIN_CHANNEL), int(file_id))
     media = msg.document or msg.video or msg.audio or msg.photo
@@ -60,8 +74,7 @@ async def video_play(request):
         size_mb = round(file_size / (1024 * 1024), 2)
 
         if "video" in mime_type:
-            icon = "🎬"
-            file_type = "Video"
+            file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = f'''
             <video controls autoplay playsinline preload="metadata">
                 <source src="/stream/{file_id}" type="{mime_type}">
@@ -70,8 +83,7 @@ async def video_play(request):
             '''
             playable_note = ""
         elif "audio" in mime_type:
-            icon = "🎵"
-            file_type = "Audio"
+            file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = f'''
             <audio controls autoplay preload="metadata">
                 <source src="/stream/{file_id}" type="{mime_type}">
@@ -80,8 +92,7 @@ async def video_play(request):
             '''
             playable_note = ""
         else:
-            icon = "📁"
-            file_type = "Document"
+            file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = ""
             playable_note = "<p class='warn'>⚠️ This file may not play in browser. You can download it below.</p>"
 
@@ -90,8 +101,7 @@ async def video_play(request):
         file_name = "Unknown"
         mime_type = "unknown"
         size_mb = 0
-        icon = "📁"
-        file_type = "File"
+        file_type, accent, icon_svg = "File", "#5a7a94", _ICON_DOC
         player_tag = ""
         playable_note = "<p class='warn'>⚠️ Could not fetch file info.</p>"
         file_id = request.match_info.get("file_id")
@@ -104,28 +114,47 @@ async def video_play(request):
 <head>
     <title>{file_name}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
             background: #0b1521;
             color: white;
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'DM Mono', monospace;
             display: flex;
             flex-direction: column;
             align-items: center;
             padding: 20px 15px 40px;
             min-height: 100vh;
         }}
-        .title {{
-            color: #2481cc;
-            font-size: 18px;
-            font-weight: bold;
+        .title-row {{
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
             margin-bottom: 15px;
-            text-align: center;
-            line-height: 1.4;
-            word-break: break-word;
             max-width: 850px;
             width: 100%;
+        }}
+        .badge {{
+            flex: none;
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: {accent}22;
+            border: 1px solid {accent}55;
+            color: {accent};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .title-text {{
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 17px;
+            line-height: 1.4;
+            word-break: break-word;
+            padding-top: 6px;
         }}
         .info-box {{
             background: #112033;
@@ -153,6 +182,15 @@ async def video_play(request):
             font-weight: 500;
             word-break: break-all;
             text-align: right;
+        }}
+        .type-chip {{
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            background: {accent}22;
+            color: {accent};
+            font-weight: 600;
+            font-size: 12px;
         }}
         video, audio {{
             width: 100%;
@@ -205,7 +243,10 @@ async def video_play(request):
 </head>
 <body>
 
-    <div class="title">{icon} {file_name}</div>
+    <div class="title-row">
+        <span class="badge">{icon_svg}</span>
+        <span class="title-text">{file_name}</span>
+    </div>
 
     {playable_note}
     {player_tag}
@@ -221,7 +262,7 @@ async def video_play(request):
         </div>
         <div class="info-row">
             <span class="info-label">🎞️ Type</span>
-            <span class="info-value">{file_type} ({mime_type})</span>
+            <span class="type-chip">{file_type}</span>
         </div>
         <div class="info-row">
             <span class="info-label">🆔 File ID</span>
