@@ -1,7 +1,7 @@
 import logging
 import math
 from aiohttp import web
-from config import BIN_CHANNEL, FQDN
+from config import BIN_CHANNEL, FQDN, PORT
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +62,15 @@ async def video_play(request):
             icon = "🎬"
             file_type = "Video"
             player_tag = f'''
-            <video controls autoplay playsinline preload="metadata">
+            <video id="mainVideo" controls autoplay playsinline preload="metadata">
                 <source src="/stream/{file_id}" type="{mime_type}">
                 Your browser does not support this video.
             </video>
+            <div id="langBar" class="lang-bar"></div>
+            <audio id="altAudio" style="display:none;" preload="auto"></audio>
             '''
             playable_note = ""
+            has_video = True
         elif "audio" in mime_type:
             icon = "🎵"
             file_type = "Audio"
@@ -78,11 +81,13 @@ async def video_play(request):
             </audio>
             '''
             playable_note = ""
+            has_video = False
         else:
             icon = "📁"
             file_type = "Document"
             player_tag = ""
             playable_note = "<p class='warn'>⚠️ This file may not play in browser. You can download it below.</p>"
+            has_video = False
 
     except Exception as e:
         logger.error(f"File info error: {e}")
@@ -94,9 +99,75 @@ async def video_play(request):
         player_tag = ""
         playable_note = "<p class='warn'>⚠️ Could not fetch file info.</p>"
         file_id = request.match_info.get("file_id")
+        has_video = False
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     download_url = f"https://{clean_fqdn}/dl/{file_id}"
+
+    track_script = ""
+    if has_video:
+        track_script = f'''
+    <script>
+        (async function() {{
+            const video = document.getElementById('mainVideo');
+            const altAudio = document.getElementById('altAudio');
+            const langBar = document.getElementById('langBar');
+            let tracks = [];
+            let activeIndex = 0;
+            let usingAltAudio = false;
+
+            function syncAudio() {{
+                if (!usingAltAudio) return;
+                if (Math.abs(altAudio.currentTime - video.currentTime) > 0.25) {{
+                    altAudio.currentTime = video.currentTime;
+                }}
+            }}
+
+            function selectTrack(idx) {{
+                activeIndex = idx;
+                document.querySelectorAll('.lang-btn').forEach((b, i) => {{
+                    b.classList.toggle('active', i === idx);
+                }});
+                // Track 0 is the file's native/default audio — just unmute the video.
+                if (idx === 0) {{
+                    usingAltAudio = false;
+                    altAudio.pause();
+                    video.muted = false;
+                    return;
+                }}
+                usingAltAudio = true;
+                video.muted = true;
+                altAudio.src = '/audio/{file_id}/' + idx;
+                altAudio.currentTime = video.currentTime;
+                if (!video.paused) altAudio.play().catch(() => {{}});
+            }}
+
+            video.addEventListener('play', () => {{ if (usingAltAudio) {{ altAudio.currentTime = video.currentTime; altAudio.play().catch(() => {{}}); }} }});
+            video.addEventListener('pause', () => {{ if (usingAltAudio) altAudio.pause(); }});
+            video.addEventListener('seeked', syncAudio);
+            video.addEventListener('timeupdate', syncAudio);
+
+            try {{
+                const res = await fetch('/tracks/{file_id}');
+                const data = await res.json();
+                tracks = data.tracks || [];
+            }} catch (e) {{
+                tracks = [];
+            }}
+
+            if (tracks.length > 1) {{
+                langBar.style.display = 'flex';
+                tracks.forEach((t, i) => {{
+                    const btn = document.createElement('button');
+                    btn.className = 'lang-btn' + (i === 0 ? ' active' : '');
+                    btn.textContent = '🔊 ' + (t.label || ('Track ' + (i + 1)));
+                    btn.onclick = () => selectTrack(i);
+                    langBar.appendChild(btn);
+                }});
+            }}
+        }})();
+    </script>
+    '''
 
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -200,6 +271,28 @@ async def video_play(request):
         .btn-download {{ background: #27ae60; }}
         .btn-copy {{ background: #2481cc; }}
         .copied {{ background: #1a6aaa !important; }}
+        .lang-bar {{
+            display: none;
+            flex-wrap: wrap;
+            gap: 8px;
+            width: 100%;
+            max-width: 850px;
+            margin-bottom: 15px;
+        }}
+        .lang-btn {{
+            padding: 8px 14px;
+            background: #112033;
+            border: 1px solid #2481cc44;
+            color: #7fb3d3;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+        }}
+        .lang-btn.active {{
+            background: #2481cc;
+            color: #fff;
+            border-color: #2481cc;
+        }}
     </style>
 </head>
 <body>
@@ -260,6 +353,8 @@ async def video_play(request):
             }}, 2000);
         }}
     </script>
+
+    {track_script}
 
 </body>
 </html>"""
