@@ -4,17 +4,30 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import BIN_CHANNEL, FQDN
 from database.files_db import save_file
 
-def make_channel_buttons(file_id):
+def make_channel_buttons(file_id, is_video):
     clean_host = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     download_link = f"https://{clean_host}/dl/{file_id}"
     stream_link = f"https://{clean_host}/watch/{file_id}"
 
-    return InlineKeyboardMarkup([
+    rows = [
         [
             InlineKeyboardButton("𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍", url=download_link),
             InlineKeyboardButton("𝚂𝚝𝚛𝚎𝚊𝚖", url=stream_link)
         ]
-    ])
+    ]
+
+    # VLC / MX Player only make sense for video. Buttons point at our own
+    # https:// redirect page (web/open_redirect.py), not a raw intent:// URL —
+    # Telegram's Bot API rejects non-http(s)/tg button URLs with BUTTON_URL_INVALID.
+    if is_video:
+        vlc_open_url = f"https://{clean_host}/open/vlc/{file_id}"
+        mx_open_url = f"https://{clean_host}/open/mx/{file_id}"
+        rows.append([
+            InlineKeyboardButton("𝚅𝙻𝙲 𝙿𝚕𝚊𝚢𝚎𝚛", url=vlc_open_url),
+            InlineKeyboardButton("𝙼𝚇 𝙿𝚕𝚊𝚢𝚎𝚛", url=mx_open_url)
+        ])
+
+    return InlineKeyboardMarkup(rows)
 
 _MEDIA_FILTER = (
     filters.document | filters.video | filters.audio |
@@ -47,7 +60,8 @@ async def channel_file_handler(client, message):
             uploader_id=message.chat.id
         )
 
-        markup = make_channel_buttons(copied.id)
+        is_video = bool(message.video) or "video" in mime_type
+        markup = make_channel_buttons(copied.id, is_video)
 
         await asyncio.sleep(1)
 
