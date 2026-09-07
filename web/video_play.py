@@ -7,6 +7,11 @@ logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1024 * 1024  # Pyrogram's internal download chunk size (1MB)
 
+# VLC/MX Player open several range requests in parallel to buffer faster.
+# A single Pyrogram client can't safely serve many concurrent stream_media()
+# calls at once — extra requests queue here instead of stalling forever.
+_STREAM_SEMAPHORE = asyncio.Semaphore(3)
+
 
 def _media_info(media):
     file_name = getattr(media, "file_name", "Unknown File")
@@ -388,21 +393,22 @@ async def stream_handler(request):
         CHUNK_TIMEOUT = 20  # seconds — if Telegram/network stalls this long, give up and close
 
         try:
-            if file_size:
-                gen = _chunked_stream(bot_client, msg, start, end)
-            else:
-                gen = bot_client.stream_media(msg)
+            async with _STREAM_SEMAPHORE:
+                if file_size:
+                    gen = _chunked_stream(bot_client, msg, start, end)
+                else:
+                    gen = bot_client.stream_media(msg)
 
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(gen.__anext__(), timeout=CHUNK_TIMEOUT)
-                except StopAsyncIteration:
-                    break
-                except asyncio.TimeoutError:
-                    logger.warning(f"Stream stalled (no data for {CHUNK_TIMEOUT}s) on {file_id}, closing")
-                    break
-                if chunk:
-                    await response.write(chunk)
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(gen.__anext__(), timeout=CHUNK_TIMEOUT)
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Stream stalled (no data for {CHUNK_TIMEOUT}s) on {file_id}, closing")
+                        break
+                    if chunk:
+                        await response.write(chunk)
         except (ConnectionResetError, asyncio.CancelledError):
             # Client dropped connection (e.g. lost internet) — nothing more to do.
             pass
@@ -445,4 +451,4 @@ async def download_handler(request):
     except Exception as e:
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
-    
+        
