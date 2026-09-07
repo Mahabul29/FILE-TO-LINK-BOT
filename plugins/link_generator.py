@@ -49,8 +49,8 @@ async def link_generator_handler(client, message):
             vlc_open_url = f"https://{base_url}/open/vlc/{copied_msg.id}"
             mx_open_url = f"https://{base_url}/open/mx/{copied_msg.id}"
             buttons.append([
-                InlineKeyboardButton("▶ VLC Player", url=vlc_open_url),
-                InlineKeyboardButton("▶ MX Player", url=mx_open_url)
+                InlineKeyboardButton("𝚅𝙻𝙲 𝙿𝚕𝚊𝚢𝚎𝚛", url=vlc_open_url),
+                InlineKeyboardButton("𝙼𝚇 𝙿𝚕𝚊𝚢𝚎𝚛", url=mx_open_url)
             ])
 
         keyboard = InlineKeyboardMarkup(buttons)
