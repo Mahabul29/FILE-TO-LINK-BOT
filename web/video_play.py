@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import math
 from aiohttp import web
 from config import BIN_CHANNEL, FQDN
 
@@ -44,7 +43,7 @@ async def _chunked_stream(bot_client, msg, start: int, end: int):
     offset = start - (start % CHUNK_SIZE)
     first_cut = start - offset
     last_cut = (end % CHUNK_SIZE) + 1
-    part_count = math.ceil(end / CHUNK_SIZE) - math.floor(offset / CHUNK_SIZE)
+    part_count = ((end - offset) // CHUNK_SIZE) + 1
 
     current = 0
     async for chunk in bot_client.stream_media(
@@ -108,6 +107,28 @@ async def video_play(request):
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     download_url = f"https://{clean_fqdn}/dl/{file_id}"
+    stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
+
+    ext_player_buttons = ""
+    if file_type == "Video":
+        vlc_intent = (
+            f"intent://{stream_url_bare}#Intent;"
+            f"package=org.videolan.vlc;type=video/*;scheme=https;"
+            f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=org.videolan.vlc;"
+            f"end"
+        )
+        mx_intent = (
+            f"intent://{stream_url_bare}#Intent;"
+            f"package=com.mxtech.videoplayer.ad;type=video/*;scheme=https;"
+            f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=com.mxtech.videoplayer.ad;"
+            f"end"
+        )
+        ext_player_buttons = f'''
+        <div class="ext-buttons">
+            <a href="{vlc_intent}" class="btn btn-vlc">▶ VLC</a>
+            <a href="{mx_intent}" class="btn btn-mx">▶ MX Player</a>
+        </div>
+        '''
 
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -239,6 +260,15 @@ async def video_play(request):
         .btn-download {{ background: #27ae60; }}
         .btn-copy {{ background: #2481cc; }}
         .copied {{ background: #1a6aaa !important; }}
+        .ext-buttons {{
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            max-width: 850px;
+            margin-bottom: 15px;
+        }}
+        .btn-vlc {{ background: #e85e00; }}
+        .btn-mx {{ background: #1f2937; border: 1px solid #37415155; }}
     </style>
 </head>
 <body>
@@ -250,6 +280,8 @@ async def video_play(request):
 
     {playable_note}
     {player_tag}
+
+    {ext_player_buttons}
 
     <div class="info-box">
         <div class="info-row">
@@ -413,4 +445,4 @@ async def download_handler(request):
     except Exception as e:
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
-            
+    
