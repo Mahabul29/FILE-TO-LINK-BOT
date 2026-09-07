@@ -3,6 +3,7 @@ from aiohttp import web
 from config import PORT
 from web.video_play import video_play, stream_handler, download_handler
 from web.home import home_page
+from web.open_redirect import open_in_player
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ async def web_server(bot_client):
     app.router.add_get("/watch/{file_id}", video_play)
     app.router.add_get("/stream/{file_id}", stream_handler)
     app.router.add_get("/dl/{file_id}", download_handler)
+    app.router.add_get("/open/{player}/{file_id}", open_in_player)
 
     runner = web.AppRunner(app)
     await runner.setup()
