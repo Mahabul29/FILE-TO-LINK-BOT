@@ -66,3 +66,4 @@ async def channel_file_handler(client, message):
 async def channel_edit_handler(client, message):
     if not message.reply_markup:
         await channel_file_handler(client, message)
+        
