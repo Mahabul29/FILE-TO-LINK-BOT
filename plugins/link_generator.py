@@ -14,7 +14,6 @@ async def link_generator_handler(client, message):
 
         download_link = f"https://{base_url}/dl/{copied_msg.id}"
         stream_link = f"https://{base_url}/watch/{copied_msg.id}"
-        stream_url_bare = f"{base_url}/stream/{copied_msg.id}"
 
         media = message.document or message.video or message.audio
         file_name = getattr(media, "file_name", "Unknown")
@@ -47,21 +46,11 @@ async def link_generator_handler(client, message):
 
         # VLC / MX Player only make sense for video — they'd just error on a plain document.
         if "video" in mime_type:
-            vlc_intent = (
-                f"intent://{stream_url_bare}#Intent;"
-                f"package=org.videolan.vlc;type=video/*;scheme=https;"
-                f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=org.videolan.vlc;"
-                f"end"
-            )
-            mx_intent = (
-                f"intent://{stream_url_bare}#Intent;"
-                f"package=com.mxtech.videoplayer.ad;type=video/*;scheme=https;"
-                f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=com.mxtech.videoplayer.ad;"
-                f"end"
-            )
+            vlc_open_url = f"https://{base_url}/open/vlc/{copied_msg.id}"
+            mx_open_url = f"https://{base_url}/open/mx/{copied_msg.id}"
             buttons.append([
-                InlineKeyboardButton("▶ VLC Player", url=vlc_intent),
-                InlineKeyboardButton("▶ MX Player", url=mx_intent)
+                InlineKeyboardButton("▶ VLC Player", url=vlc_open_url),
+                InlineKeyboardButton("▶ MX Player", url=mx_open_url)
             ])
 
         keyboard = InlineKeyboardMarkup(buttons)
@@ -74,3 +63,4 @@ async def link_generator_handler(client, message):
 
     except Exception as e:
         await msg.edit_text(f"<b>Error:</b> <code>{str(e)}</code>")
+        
