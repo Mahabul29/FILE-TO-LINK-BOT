@@ -1,7 +1,27 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import BIN_CHANNEL, FQDN
+from config import BIN_CHANNEL, FQDN, PLAYERS
 from database.files_db import save_file
+from database.settings_db import get_active_player
+
+
+async def build_player_buttons(base_url, file_id):
+    """
+    Returns a list of InlineKeyboardButton rows for external players,
+    respecting the active-player setting (2 buttons per row).
+    """
+    active_player = await get_active_player()
+    keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
+    keys = [k for k in keys if k in PLAYERS]
+
+    buttons = [
+        InlineKeyboardButton(PLAYERS[k]["label"], url=f"https://{base_url}/open/{k}/{file_id}")
+        for k in keys
+    ]
+
+    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    return rows
+
 
 @Client.on_message(filters.private & (filters.document | filters.video | filters.audio))
 async def link_generator_handler(client, message):
@@ -31,27 +51,24 @@ async def link_generator_handler(client, message):
         )
 
         text = (
-            "<b>𝗬𝗼𝘂𝗿 𝗟𝗶𝗻𝗸 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 ♥︎</b>\n\n"
-            f"<b>𝙵𝚒𝚕𝚎 𝙽𝚊𝚖𝚎:</b> <code>{file_name}</code>\n\n"
-            f"<b>ғɪʟᴇ sɪᴢᴇ:</b> <code>{size_mb} MB</code>\n\n"
-            f"<b>𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍:</b>\n{download_link}"
+            "<b>ð—¬ð—¼ð˜‚ð—¿ ð—Ÿð—¶ð—»ð—¸ ð—šð—²ð—»ð—²ð—¿ð—®ð˜ð—²ð—± â™¥ï¸Ž</b>\n\n"
+            f"<b>ð™µðš’ðš•ðšŽ ð™½ðšŠðš–ðšŽ:</b> <code>{file_name}</code>\n\n"
+            f"<b>Ò“ÉªÊŸá´‡ sÉªá´¢á´‡:</b> <code>{size_mb} MB</code>\n\n"
+            f"<b>ð™³ðš˜ðš ðš—ðš•ðš˜ðšŠðš:</b>\n{download_link}"
         )
 
         buttons = [
             [
-                InlineKeyboardButton("𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍", url=download_link),
-                InlineKeyboardButton("𝚂𝚝𝚛𝚎𝚊𝚖", url=stream_link)
+                InlineKeyboardButton("ð™³ðš˜ðš ðš—ðš•ðš˜ðšŠðš", url=download_link),
+                InlineKeyboardButton("ðš‚ðšðš›ðšŽðšŠðš–", url=stream_link)
             ]
         ]
 
-        # VLC / MX Player only make sense for video — they'd just error on a plain document.
+        # VLC / MX / SPlayer / PLAYit only make sense for video.
+        # If /activate was used, only that one player's button is added.
         if "video" in mime_type:
-            vlc_open_url = f"https://{base_url}/open/vlc/{copied_msg.id}"
-            mx_open_url = f"https://{base_url}/open/mx/{copied_msg.id}"
-            buttons.append([
-                InlineKeyboardButton("𝚅𝙻𝙲 𝙿𝚕𝚊𝚢𝚎𝚛", url=vlc_open_url),
-                InlineKeyboardButton("𝙼𝚇 𝙿𝚕𝚊𝚢𝚎𝚛", url=mx_open_url)
-            ])
+            player_rows = await build_player_buttons(base_url, copied_msg.id)
+            buttons.extend(player_rows)
 
         keyboard = InlineKeyboardMarkup(buttons)
 
@@ -63,4 +80,3 @@ async def link_generator_handler(client, message):
 
     except Exception as e:
         await msg.edit_text(f"<b>Error:</b> <code>{str(e)}</code>")
-        
