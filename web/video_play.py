@@ -128,10 +128,26 @@ async def video_play(request):
             f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=com.mxtech.videoplayer.ad;"
             f"end"
         )
+        splayer_intent = (
+            f"intent://{stream_url_bare}#Intent;"
+            f"package=com.ttee.leeplayer;type=video/*;scheme=https;"
+            f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=com.ttee.leeplayer;"
+            f"end"
+        )
+        playit_intent = (
+            f"intent://{stream_url_bare}#Intent;"
+            f"package=com.playit.videoplayer;type=video/*;scheme=https;"
+            f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=com.playit.videoplayer;"
+            f"end"
+        )
         ext_player_buttons = f'''
         <div class="ext-buttons">
             <a href="{vlc_intent}" class="btn btn-vlc">▶ VLC</a>
             <a href="{mx_intent}" class="btn btn-mx">▶ MX Player</a>
+        </div>
+        <div class="ext-buttons">
+            <a href="{splayer_intent}" class="btn btn-splayer">▶ SPlayer</a>
+            <a href="{playit_intent}" class="btn btn-playit">▶ PLAYit</a>
         </div>
         '''
 
@@ -270,10 +286,12 @@ async def video_play(request):
             gap: 10px;
             width: 100%;
             max-width: 850px;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }}
         .btn-vlc {{ background: #e85e00; }}
         .btn-mx {{ background: #1f2937; border: 1px solid #37415155; }}
+        .btn-splayer {{ background: #2d7dd2; }}
+        .btn-playit {{ background: #d92027; }}
     </style>
 </head>
 <body>
@@ -451,4 +469,3 @@ async def download_handler(request):
     except Exception as e:
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
-        
