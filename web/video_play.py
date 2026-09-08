@@ -1,7 +1,8 @@
 import asyncio
 import logging
 from aiohttp import web
-from config import BIN_CHANNEL, FQDN
+from config import BIN_CHANNEL, FQDN, PLAYERS
+from database.settings_db import get_active_player
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +10,7 @@ CHUNK_SIZE = 1024 * 1024  # Pyrogram's internal download chunk size (1MB)
 
 # VLC/MX Player open several range requests in parallel to buffer faster.
 # A single Pyrogram client can't safely serve many concurrent stream_media()
-# calls at once — extra requests queue here instead of stalling forever.
+# calls at once â€” extra requests queue here instead of stalling forever.
 _STREAM_SEMAPHORE = asyncio.Semaphore(3)
 
 
@@ -24,9 +25,17 @@ _ICON_VIDEO = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" strok
 _ICON_AUDIO = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>'
 _ICON_DOC = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>'
 
+# CSS class + button label per player key â€” used to build the ext-player row
+_PLAYER_BTN_CLASS = {
+    "vlc": "btn-vlc",
+    "mx": "btn-mx",
+    "splayer": "btn-splayer",
+    "playit": "btn-playit",
+}
+
 
 def _type_badge(mime_type):
-    # (label, accent color, svg icon) — same accent system as the home page
+    # (label, accent color, svg icon) â€” same accent system as the home page
     if "video" in mime_type:
         return "Video", "#ef6461", _ICON_VIDEO
     if "audio" in mime_type:
@@ -65,6 +74,39 @@ async def _chunked_stream(bot_client, msg, start: int, end: int):
         current += 1
 
 
+def _build_ext_player_buttons(stream_url_bare, active_player):
+    """
+    Builds the intent:// buttons row(s) for external players.
+    If active_player != "all", only that one player's button is shown.
+    """
+    keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
+    keys = [k for k in keys if k in PLAYERS]  # guard against unknown stored values
+
+    if not keys:
+        return ""
+
+    buttons_html = []
+    for key in keys:
+        info = PLAYERS[key]
+        package, label = info["package"], info["label"]
+        fallback_url = f"https://play.google.com/store/apps/details?id={package}"
+        intent_url = (
+            f"intent://{stream_url_bare}#Intent;"
+            f"package={package};type=video/*;scheme=https;"
+            f"S.browser_fallback_url={fallback_url};"
+            f"end"
+        )
+        css_class = _PLAYER_BTN_CLASS.get(key, "btn-vlc")
+        buttons_html.append(f'<a href="{intent_url}" class="btn {css_class}">â–¶ {label}</a>')
+
+    # two buttons per row, same layout style as before
+    rows = ""
+    for i in range(0, len(buttons_html), 2):
+        pair = buttons_html[i:i + 2]
+        rows += f'<div class="ext-buttons">{"".join(pair)}</div>\n'
+    return rows
+
+
 async def video_play(request):
     file_id = request.match_info.get("file_id")
     bot_client = request.app["bot_client"]
@@ -72,7 +114,7 @@ async def video_play(request):
     try:
         msg, media = await _get_media(bot_client, file_id)
         if not media:
-            return web.Response(text="❌ File not found", status=404)
+            return web.Response(text="âŒ File not found", status=404)
 
         file_name, mime_type, file_size = _media_info(media)
         size_mb = round(file_size / (1024 * 1024), 2)
@@ -98,7 +140,7 @@ async def video_play(request):
         else:
             file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = ""
-            playable_note = "<p class='warn'>⚠️ This file may not play in browser. You can download it below.</p>"
+            playable_note = "<p class='warn'>âš ï¸ This file may not play in browser. You can download it below.</p>"
 
     except Exception as e:
         logger.error(f"File info error: {e}")
@@ -107,7 +149,7 @@ async def video_play(request):
         size_mb = 0
         file_type, accent, icon_svg = "File", "#5a7a94", _ICON_DOC
         player_tag = ""
-        playable_note = "<p class='warn'>⚠️ Could not fetch file info.</p>"
+        playable_note = "<p class='warn'>âš ï¸ Could not fetch file info.</p>"
         file_id = request.match_info.get("file_id")
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
@@ -116,40 +158,8 @@ async def video_play(request):
 
     ext_player_buttons = ""
     if file_type == "Video":
-        vlc_intent = (
-            f"intent://{stream_url_bare}#Intent;"
-            f"package=org.videolan.vlc;type=video/*;scheme=https;"
-            f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=org.videolan.vlc;"
-            f"end"
-        )
-        mx_intent = (
-            f"intent://{stream_url_bare}#Intent;"
-            f"package=com.mxtech.videoplayer.ad;type=video/*;scheme=https;"
-            f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=com.mxtech.videoplayer.ad;"
-            f"end"
-        )
-        splayer_intent = (
-            f"intent://{stream_url_bare}#Intent;"
-            f"package=com.ttee.leeplayer;type=video/*;scheme=https;"
-            f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=com.ttee.leeplayer;"
-            f"end"
-        )
-        playit_intent = (
-            f"intent://{stream_url_bare}#Intent;"
-            f"package=com.playit.videoplayer;type=video/*;scheme=https;"
-            f"S.browser_fallback_url=https://play.google.com/store/apps/details?id=com.playit.videoplayer;"
-            f"end"
-        )
-        ext_player_buttons = f'''
-        <div class="ext-buttons">
-            <a href="{vlc_intent}" class="btn btn-vlc">▶ VLC</a>
-            <a href="{mx_intent}" class="btn btn-mx">▶ MX Player</a>
-        </div>
-        <div class="ext-buttons">
-            <a href="{splayer_intent}" class="btn btn-splayer">▶ SPlayer</a>
-            <a href="{playit_intent}" class="btn btn-playit">▶ PLAYit</a>
-        </div>
-        '''
+        active_player = await get_active_player()
+        ext_player_buttons = _build_ext_player_buttons(stream_url_bare, active_player)
 
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -308,26 +318,26 @@ async def video_play(request):
 
     <div class="info-box">
         <div class="info-row">
-            <span class="info-label">📄 File Name</span>
+            <span class="info-label">ðŸ“„ File Name</span>
             <span class="info-value">{file_name}</span>
         </div>
         <div class="info-row">
-            <span class="info-label">📦 Size</span>
+            <span class="info-label">ðŸ“¦ Size</span>
             <span class="info-value">{size_mb} MB</span>
         </div>
         <div class="info-row">
-            <span class="info-label">🎞️ Type</span>
+            <span class="info-label">ðŸŽžï¸ Type</span>
             <span class="type-chip">{file_type}</span>
         </div>
         <div class="info-row">
-            <span class="info-label">🆔 File ID</span>
+            <span class="info-label">ðŸ†” File ID</span>
             <span class="info-value">{file_id}</span>
         </div>
     </div>
 
     <div class="top-buttons">
-        <a href="{download_url}" class="btn btn-download">⬇ Download</a>
-        <button class="btn btn-copy" onclick="copyLink()">🔗 Copy Link</button>
+        <a href="{download_url}" class="btn btn-download">â¬‡ Download</a>
+        <button class="btn btn-copy" onclick="copyLink()">ðŸ”— Copy Link</button>
     </div>
 
     <script>
@@ -349,10 +359,10 @@ async def video_play(request):
 
         function showCopied() {{
             const btn = document.querySelector('.btn-copy');
-            btn.textContent = '✅ Copied!';
+            btn.textContent = 'âœ… Copied!';
             btn.classList.add('copied');
             setTimeout(() => {{
-                btn.textContent = '🔗 Copy Link';
+                btn.textContent = 'ðŸ”— Copy Link';
                 btn.classList.remove('copied');
             }}, 2000);
         }}
@@ -370,7 +380,7 @@ async def stream_handler(request):
     try:
         msg, media = await _get_media(bot_client, file_id)
         if not media:
-            return web.Response(text="❌ File not found", status=404)
+            return web.Response(text="âŒ File not found", status=404)
 
         file_name, mime_type, file_size = _media_info(media)
 
@@ -408,7 +418,7 @@ async def stream_handler(request):
         response = web.StreamResponse(status=status, headers=headers)
         await response.prepare(request)
 
-        CHUNK_TIMEOUT = 20  # seconds — if Telegram/network stalls this long, give up and close
+        CHUNK_TIMEOUT = 20  # seconds â€” if Telegram/network stalls this long, give up and close
 
         try:
             async with _STREAM_SEMAPHORE:
@@ -428,7 +438,7 @@ async def stream_handler(request):
                     if chunk:
                         await response.write(chunk)
         except (ConnectionResetError, asyncio.CancelledError):
-            # Client dropped connection (e.g. lost internet) — nothing more to do.
+            # Client dropped connection (e.g. lost internet) â€” nothing more to do.
             pass
 
         await response.write_eof()
@@ -436,7 +446,7 @@ async def stream_handler(request):
 
     except Exception as e:
         logger.error(f"Stream error: {e}")
-        return web.Response(text=f"❌ Error: {e}", status=500)
+        return web.Response(text=f"âŒ Error: {e}", status=500)
 
 
 async def download_handler(request):
@@ -446,7 +456,7 @@ async def download_handler(request):
     try:
         msg, media = await _get_media(bot_client, file_id)
         if not media:
-            return web.Response(text="❌ File not found", status=404)
+            return web.Response(text="âŒ File not found", status=404)
 
         file_name, mime_type, file_size = _media_info(media)
 
@@ -468,4 +478,4 @@ async def download_handler(request):
 
     except Exception as e:
         logger.error(f"Download error: {e}")
-        return web.Response(text=f"❌ Error: {e}", status=500)
+        return web.Response(text=f"âŒ Error: {e}", status=500)
