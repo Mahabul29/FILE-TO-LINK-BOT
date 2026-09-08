@@ -36,7 +36,7 @@ async def link_generator_handler(client, message):
         stream_link = f"https://{base_url}/watch/{copied_msg.id}"
 
         media = message.document or message.video or message.audio
-        file_name = getattr(media, "file_name", "Unknown")
+        file_name = getattr(media, "file_name", "Unknown File")
         file_size = getattr(media, "file_size", 0) or 0
         mime_type = getattr(media, "mime_type", "application/octet-stream") or "application/octet-stream"
         size_mb = round(file_size / (1024 * 1024), 2)
@@ -50,23 +50,30 @@ async def link_generator_handler(client, message):
             uploader_id=message.from_user.id
         )
 
+        # Clean standard text (fixes encoding corruption/glitch in message text)
         text = (
-            "<b>ð—¬ð—¼ð˜‚ð—¿ ð—Ÿð—¶ð—»ð—¸ ð—šð—²ð—»ð—²ð—¿ð—®ð˜ð—²ð—± â™¥ï¸Ž</b>\n\n"
-            f"<b>ð™µðš’ðš•ðšŽ ð™½ðšŠðš–ðšŽ:</b> <code>{file_name}</code>\n\n"
-            f"<b>Ò“ÉªÊŸá´‡ sÉªá´¢á´‡:</b> <code>{size_mb} MB</code>\n\n"
-            f"<b>ð™³ðš˜ðš ðš—ðš•ðš˜ðšŠðš:</b>\n{download_link}"
+            "<b>Your Link Generated ❤️</b>\n\n"
+            f"<b>File Name:</b> <code>{file_name}</code>\n\n"
+            f"<b>FILE SIZE:</b> <code>{size_mb} MB</code>\n\n"
+            f"<b>Download:</b>\n{download_link}"
         )
 
         buttons = [
             [
-                InlineKeyboardButton("ð™³ðš˜ðš ðš—ðš•ðš˜ðšŠðš", url=download_link),
-                InlineKeyboardButton("ðš‚ðšðš›ðšŽðšŠðš–", url=stream_link)
+                InlineKeyboardButton("Download 📥", url=download_link),
+                InlineKeyboardButton("Stream 🖥️", url=stream_link)
             ]
         ]
 
-        # VLC / MX / SPlayer / PLAYit only make sense for video.
-        # If /activate was used, only that one player's button is added.
-        if "video" in mime_type:
+        # Enhanced video detection (handles .mkv, .mp4, and video documents)
+        video_exts = ('.mkv', '.mp4', '.avi', '.mov', '.flv', '.wmv', '.m4v', '.webm', '.3gp')
+        is_video = (
+            message.video is not None 
+            or "video" in mime_type.lower() 
+            or file_name.lower().endswith(video_exts)
+        )
+
+        if is_video:
             player_rows = await build_player_buttons(base_url, copied_msg.id)
             buttons.extend(player_rows)
 
@@ -80,3 +87,4 @@ async def link_generator_handler(client, message):
 
     except Exception as e:
         await msg.edit_text(f"<b>Error:</b> <code>{str(e)}</code>")
+        
