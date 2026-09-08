@@ -1,10 +1,5 @@
 from aiohttp import web
-from config import FQDN
-
-_PLAYERS = {
-    "vlc": ("org.videolan.vlc", "VLC"),
-    "mx": ("com.mxtech.videoplayer.ad", "MX Player"),
-}
+from config import FQDN, PLAYERS
 
 
 async def open_in_player(request):
@@ -16,10 +11,10 @@ async def open_in_player(request):
     player = request.match_info.get("player")
     file_id = request.match_info.get("file_id")
 
-    info = _PLAYERS.get(player)
+    info = PLAYERS.get(player)
     if not info:
         return web.Response(text="Unknown player", status=404)
-    package, label = info
+    package, label = info["package"], info["label"]
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
@@ -57,10 +52,9 @@ async def open_in_player(request):
 </head>
 <body>
     <div>
-        <p>Opening in {label}…</p>
+        <p>Opening in {label}â€¦</p>
         <p><a href="{intent_url}">Tap here if it doesn't open automatically</a></p>
     </div>
 </body>
 </html>"""
     return web.Response(text=html, content_type="text/html")
-  
