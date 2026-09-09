@@ -9,32 +9,16 @@ from database.settings_db import get_active_player
 logger = logging.getLogger(__name__)
 
 
-def to_mono(text: str) -> str:
-    """Converts standard ASCII characters to Mathematical Monospace font."""
-    res = []
-    for char in text:
-        code = ord(char)
-        if 65 <= code <= 90:      # A-Z
-            res.append(chr(0x1D670 + (code - 65)))
-        elif 97 <= code <= 122:   # a-z
-            res.append(chr(0x1D68A + (code - 97)))
-        elif 48 <= code <= 57:    # 0-9
-            res.append(chr(0x1D7F6 + (code - 48)))
-        else:
-            res.append(char)
-    return "".join(res)
-
-
 async def make_channel_buttons(file_id: int, is_video: bool) -> InlineKeyboardMarkup:
     clean_host = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     download_link = f"https://{clean_host}/dl/{file_id}"
     stream_link = f"https://{clean_host}/watch/{file_id}"
 
-    # Buttons using monospace font without emojis
+    # Fixed: Direct static small-caps strings without to_mono wrapper
     rows = [
         [
-            InlineKeyboardButton(to_mono("ᴅᴏᴡɴʟᴏᴅ"), url=download_link),
-            InlineKeyboardButton(to_mono("sᴛʀᴇᴀᴍ"), url=stream_link)
+            InlineKeyboardButton("ᴅᴏᴡɴʟᴏᴀᴅ", url=download_link),
+            InlineKeyboardButton("ꜱᴛʀᴇᴀᴍ", url=stream_link)
         ]
     ]
 
@@ -46,12 +30,10 @@ async def make_channel_buttons(file_id: int, is_video: bool) -> InlineKeyboardMa
         player_buttons = []
         for k in keys:
             label = PLAYERS[k]["label"]
-            if "Player" not in label:
-                label = f"{label} Player"
             
             player_buttons.append(
                 InlineKeyboardButton(
-                    to_mono(label),
+                    label,  # Uses the clean label directly from config.py
                     url=f"https://{clean_host}/open/{k}/{file_id}"
                 )
             )
@@ -72,7 +54,6 @@ _MEDIA_FILTER = (
 @Client.on_message(filters.channel & _MEDIA_FILTER, group=1)
 async def channel_file_handler(client, message):
     try:
-        # Copy to BIN_CHANNEL so streaming/download server can access the file
         copied = await message.copy(chat_id=BIN_CHANNEL)
         if not copied:
             return
@@ -104,7 +85,6 @@ async def channel_file_handler(client, message):
 
         await asyncio.sleep(1)
 
-        # Edits only the reply markup so original post caption/text remains intact
         await client.edit_message_reply_markup(
             chat_id=message.chat.id,
             message_id=message.id,
@@ -121,4 +101,3 @@ async def channel_file_handler(client, message):
 async def channel_edit_handler(client, message):
     if not message.reply_markup:
         await channel_file_handler(client, message)
-    
