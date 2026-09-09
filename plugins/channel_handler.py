@@ -6,28 +6,35 @@ from database.files_db import save_file
 from database.settings_db import get_active_player
 
 
-async def make_channel_buttons(file_id, is_video):
-    clean_host = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
-    download_link = f"https://{clean_host}/dl/{file_id}"
-    stream_link = f"https://{clean_host}/watch/{file_id}"
+def build_clean_url(domain: str, path: str) -> str:
+    """Builds a valid HTTPS URL and prevents 400 BUTTON_URL_INVALID errors."""
+    clean_domain = domain.replace("https://", "").replace("http://", "").strip().strip("/")
+    if not clean_domain or clean_domain == "localhost":
+        clean_domain = "example.com"
+    return f"https://{clean_domain}/{path.lstrip('/')}"
 
+
+async def make_channel_buttons(file_id, is_video):
+    download_link = build_clean_url(FQDN, f"dl/{file_id}")
+
+    # Top row contains ONLY Download (Stream button removed)
     rows = [
         [
-            InlineKeyboardButton("ð™³ðš˜ðš ðš—ðš•ðš˜ðšŠðš", url=download_link),
-            InlineKeyboardButton("ðš‚ðšðš›ðšŽðšŠðš–", url=stream_link)
+            InlineKeyboardButton("ᴅᴏᴡɴʟᴏᴅ", url=download_link)
         ]
     ]
 
-    # VLC / MX / SPlayer / PLAYit only make sense for video. Buttons point at our own
-    # https:// redirect page (web/open_redirect.py), not a raw intent:// URL â€”
-    # Telegram's Bot API rejects non-http(s)/tg button URLs with BUTTON_URL_INVALID.
+    # External player buttons for videos
     if is_video:
         active_player = await get_active_player()
         keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
         keys = [k for k in keys if k in PLAYERS]
 
         player_buttons = [
-            InlineKeyboardButton(PLAYERS[k]["label"], url=f"https://{clean_host}/open/{k}/{file_id}")
+            InlineKeyboardButton(
+                PLAYERS[k]["label"],
+                url=build_clean_url(FQDN, f"open/{k}/{file_id}")
+            )
             for k in keys
         ]
         for i in range(0, len(player_buttons), 2):
@@ -45,8 +52,6 @@ _MEDIA_FILTER = (
 @Client.on_message(filters.channel & _MEDIA_FILTER, group=1)
 async def channel_file_handler(client, message):
     try:
-        # Copy into BIN_CHANNEL â€” this is the channel video_play.py / stream_handler
-        # actually reads files from. Copying anywhere else produces links that 404.
         copied = await message.copy(chat_id=BIN_CHANNEL)
 
         if not copied:
@@ -79,10 +84,10 @@ async def channel_file_handler(client, message):
             reply_markup=markup
         )
 
-        print(f"âœ… Buttons added to Channel Post: {message.id}")
+        print(f"✅ Buttons added to Channel Post: {message.id}")
 
     except Exception as e:
-        print(f"âŒ Error in Channel {message.chat.id}: {e}")
+        print(f"❌ Error in Channel {message.chat.id}: {e}")
 
 
 @Client.on_edited_message(filters.channel & _MEDIA_FILTER, group=1)
