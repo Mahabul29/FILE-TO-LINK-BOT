@@ -17,28 +17,28 @@ def build_clean_url(domain: str, path: str) -> str:
 async def make_channel_buttons(file_id, is_video):
     download_link = build_clean_url(FQDN, f"dl/{file_id}")
 
-    # Top row contains ONLY Download (Stream button removed)
-    rows = [
-        [
-            InlineKeyboardButton("ᴅᴏᴡɴʟᴏᴅ", url=download_link)
-        ]
+    # Combine Download button and external player buttons into a single list
+    all_buttons = [
+        InlineKeyboardButton("ᴅᴏᴡɴʟᴏᴅ", url=download_link)
     ]
 
-    # External player buttons for videos
     if is_video:
         active_player = await get_active_player()
         keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
         keys = [k for k in keys if k in PLAYERS]
 
-        player_buttons = [
-            InlineKeyboardButton(
-                PLAYERS[k]["label"],
-                url=build_clean_url(FQDN, f"open/{k}/{file_id}")
+        for k in keys:
+            all_buttons.append(
+                InlineKeyboardButton(
+                    PLAYERS[k]["label"],
+                    url=build_clean_url(FQDN, f"open/{k}/{file_id}")
+                )
             )
-            for k in keys
-        ]
-        for i in range(0, len(player_buttons), 2):
-            rows.append(player_buttons[i:i + 2])
+
+    # Format all buttons into 2 per row (e.g. [DOWNLOAD] [PLAYIT])
+    rows = []
+    for i in range(0, len(all_buttons), 2):
+        rows.append(all_buttons[i:i + 2])
 
     return InlineKeyboardMarkup(rows)
 
