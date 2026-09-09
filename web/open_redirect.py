@@ -5,8 +5,7 @@ from config import FQDN, PLAYERS
 async def open_in_player(request):
     """
     GET /open/{player}/{file_id}
-    A plain https:// page (valid for Telegram inline buttons) that immediately
-    redirects into the intent:// URL for the chosen external player.
+    Redirects immediately into the intent:// URL for external players.
     """
     player = request.match_info.get("player")
     file_id = request.match_info.get("file_id")
@@ -16,7 +15,10 @@ async def open_in_player(request):
         return web.Response(text="Unknown player", status=404)
     package, label = info["package"], info["label"]
 
-    clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
+    clean_fqdn = FQDN.replace("https://", "").replace("http://", "").strip().rstrip("/")
+    if not clean_fqdn or clean_fqdn == "localhost":
+        clean_fqdn = "example.com"
+
     stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
     fallback_url = f"https://play.google.com/store/apps/details?id={package}"
 
@@ -52,9 +54,9 @@ async def open_in_player(request):
 </head>
 <body>
     <div>
-        <p>Opening in {label}â€¦</p>
+        <p>Opening in {label}...</p>
         <p><a href="{intent_url}">Tap here if it doesn't open automatically</a></p>
     </div>
 </body>
 </html>"""
-    return web.Response(text=html, content_type="text/html")
+    return web.Response(text=html, content_type="text/html", charset="utf-8")
