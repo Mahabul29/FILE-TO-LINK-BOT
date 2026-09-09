@@ -1,14 +1,14 @@
 from pyrogram import Client, filters
-from config import PLAYERS
+from config import PLAYERS, ADMINS
 from database.settings_db import get_active_player, set_active_player, clear_active_player
 
 
 def _players_list_text():
-    lines = [f"â€¢ <code>{key}</code> â€” {info['label']}" for key, info in PLAYERS.items()]
+    lines = [f"• <code>{key}</code> — {info['label']}" for key, info in PLAYERS.items()]
     return "\n".join(lines)
 
 
-@Client.on_message(filters.command("activate") & filters.private)
+@Client.on_message(filters.command("activate") & filters.private & filters.user(ADMINS))
 async def activate_player(client, message):
     args = message.text.split(maxsplit=1)
 
@@ -21,8 +21,8 @@ async def activate_player(client, message):
             "Available players:\n"
             f"{_players_list_text()}\n\n"
             "Usage:\n"
-            "<code>/activate mx</code> â€” show only MX Player\n"
-            "<code>/activate all</code> â€” show every player again"
+            "<code>/activate mx</code> — show only MX Player\n"
+            "<code>/activate all</code> — show every player again"
         )
         return
 
@@ -30,17 +30,17 @@ async def activate_player(client, message):
 
     if choice == "all":
         await clear_active_player()
-        await message.reply_text("âœ… Reset â€” every player button will show on new links.")
+        await message.reply_text("✅ Reset — every player button will show on new links.")
         return
 
     if choice not in PLAYERS:
         await message.reply_text(
-            "âŒ Unknown player key.\n\nAvailable:\n" + _players_list_text()
+            "❌ Unknown player key.\n\nAvailable:\n" + _players_list_text()
         )
         return
 
     await set_active_player(choice)
-    await message.reply_text(f"âœ… Only <b>{PLAYERS[choice]['label']}</b> will show on new links now.")
+    await message.reply_text(f"✅ Only <b>{PLAYERS[choice]['label']}</b> will show on new links now.")
 
 
 @Client.on_message(filters.command("players") & filters.private)
