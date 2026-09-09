@@ -52,16 +52,16 @@ async def link_generator_handler(client, message):
 
         # Clean standard text (fixes encoding corruption/glitch in message text)
         text = (
-            "<b>Your Link Generated ❤️</b>\n\n"
-            f"<b>File Name:</b> <code>{file_name}</code>\n\n"
-            f"<b>FILE SIZE:</b> <code>{size_mb} MB</code>\n\n"
-            f"<b>Download:</b>\n{download_link}"
+            "<b>𝗬𝗼𝘂𝗿 𝗟𝗶𝗻𝗸 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 🌿</b>\n\n"
+            f"<b>𝙵𝚒𝚕𝚎 𝙽𝚊𝚖𝚎:</b> <code>{file_name}</code>\n\n"
+            f"<b>𝙵𝚒𝚕𝚎 𝚂𝚒𝚣𝚎:</b> <code>{size_mb} MB</code>\n\n"
+            f"<b>𝙳𝚘𝚠𝚗𝚕𝚘𝚍:</b>\n{download_link}"
         )
 
         buttons = [
             [
-                InlineKeyboardButton("Download 📥", url=download_link),
-                InlineKeyboardButton("Stream 🖥️", url=stream_link)
+                InlineKeyboardButton("𝗗𝗼𝘄𝗻𝗹𝗼𝗱", url=download_link),
+                InlineKeyboardButton("𝗦𝘁𝗿𝗲𝗮𝗺", url=stream_link)
             ]
         ]
 
