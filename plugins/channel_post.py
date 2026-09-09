@@ -9,16 +9,21 @@ from database.settings_db import get_active_player
 logger = logging.getLogger(__name__)
 
 
-async def make_channel_buttons(file_id: int, is_video: bool) -> InlineKeyboardMarkup:
-    clean_host = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
-    download_link = f"https://{clean_host}/dl/{file_id}"
-    stream_link = f"https://{clean_host}/watch/{file_id}"
+def build_clean_url(domain: str, path: str) -> str:
+    """Builds a valid HTTPS URL and prevents 400 BUTTON_URL_INVALID errors."""
+    clean_domain = domain.replace("https://", "").replace("http://", "").strip().strip("/")
+    if not clean_domain or clean_domain == "localhost":
+        clean_domain = "example.com"
+    return f"https://{clean_domain}/{path.lstrip('/')}"
 
-    # Fixed: Direct static small-caps strings without to_mono wrapper
+
+async def make_channel_buttons(file_id: int, is_video: bool) -> InlineKeyboardMarkup:
+    download_link = build_clean_url(FQDN, f"dl/{file_id}")
+
+    # Top row contains ONLY Download (Stream button removed)
     rows = [
         [
-            InlineKeyboardButton("ᴅᴏᴡɴʟᴏᴀᴅ", url=download_link),
-            InlineKeyboardButton("ꜱᴛʀᴇᴀᴍ", url=stream_link)
+            InlineKeyboardButton("ᴅᴏᴇɴʟᴏᴅ", url=download_link)
         ]
     ]
 
@@ -27,18 +32,15 @@ async def make_channel_buttons(file_id: int, is_video: bool) -> InlineKeyboardMa
         keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
         keys = [k for k in keys if k in PLAYERS]
 
-        player_buttons = []
-        for k in keys:
-            label = PLAYERS[k]["label"]
-            
-            player_buttons.append(
-                InlineKeyboardButton(
-                    label,  # Uses the clean label directly from config.py
-                    url=f"https://{clean_host}/open/{k}/{file_id}"
-                )
+        player_buttons = [
+            InlineKeyboardButton(
+                PLAYERS[k]["label"],
+                url=build_clean_url(FQDN, f"open/{k}/{file_id}")
             )
+            for k in keys
+        ]
 
-        # Format into 2 buttons per row
+        # 2 buttons per row for external players
         for i in range(0, len(player_buttons), 2):
             rows.append(player_buttons[i:i + 2])
 
@@ -91,10 +93,10 @@ async def channel_file_handler(client, message):
             reply_markup=markup
         )
 
-        logger.info(f"Buttons added to Channel Post: {message.id} in Chat: {message.chat.id}")
+        logger.info(f"✅ Buttons added to Channel Post: {message.id}")
 
     except Exception as e:
-        logger.error(f"Error in Channel {message.chat.id}: {e}")
+        logger.error(f"❌ Channel Post Error in Chat {message.chat.id}: {e}")
 
 
 @Client.on_edited_message(filters.channel & _MEDIA_FILTER, group=1)
