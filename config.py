@@ -28,8 +28,8 @@ BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
 
 # --- External Players Configuration ---
 PLAYERS = {
-    "vlc":     {"package": "org.videolan.vlc",           "label": "VLC"},
-    "mx":      {"package": "com.mxtech.videoplayer.ad",  "label": "MX Player"},
-    "splayer": {"package": "com.ttee.leeplayer",          "label": "SPlayer"},
-    "playit":  {"package": "com.playit.videoplayer",      "label": "PLAYit"},
+    "ᴠʟᴄ ᴘʟᴀʏᴇʀ":     {"package": "org.videolan.vlc",           "label": "ᴠʟᴄ ᴘʟᴀʏᴇʀ"},
+    "ᴍx ᴘʟᴀʏᴇʀ":      {"package": "com.mxtech.videoplayer.ad",  "label": "ᴍx ᴘʟᴀʏᴇʀ"},
+    "sᴘʟᴀʏᴇʀ": {"package": "com.ttee.leeplayer",          "label": "ꜱᴘʟᴀʏᴇʀ"},
+    "ᴘʟᴀʏɪᴛ":  {"package": "com.playit.videoplayer",      "label": "ᴘʟᴀʏɪᴛ"},
 }
