@@ -1,12 +1,9 @@
 import asyncio
-import logging
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import BIN_CHANNEL, FQDN, PLAYERS
 from database.files_db import save_file
 from database.settings_db import get_active_player
-
-logger = logging.getLogger(__name__)
 
 
 def build_clean_url(domain: str, path: str) -> str:
@@ -17,14 +14,12 @@ def build_clean_url(domain: str, path: str) -> str:
     return f"https://{clean_domain}/{path.lstrip('/')}"
 
 
-async def make_channel_buttons(file_id: int, is_video: bool) -> InlineKeyboardMarkup:
+async def make_channel_buttons(file_id, is_video):
     download_link = build_clean_url(FQDN, f"dl/{file_id}")
 
-    # Top row contains ONLY Download (Stream button removed)
-    rows = [
-        [
-            InlineKeyboardButton("ᴅᴏᴇɴʟᴏᴅ", url=download_link)
-        ]
+    # Combine Download button and external player buttons into a single list
+    all_buttons = [
+        InlineKeyboardButton("ᴅᴏᴡɴʟᴏᴅ", url=download_link)
     ]
 
     if is_video:
@@ -32,17 +27,18 @@ async def make_channel_buttons(file_id: int, is_video: bool) -> InlineKeyboardMa
         keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
         keys = [k for k in keys if k in PLAYERS]
 
-        player_buttons = [
-            InlineKeyboardButton(
-                PLAYERS[k]["label"],
-                url=build_clean_url(FQDN, f"open/{k}/{file_id}")
+        for k in keys:
+            all_buttons.append(
+                InlineKeyboardButton(
+                    PLAYERS[k]["label"],
+                    url=build_clean_url(FQDN, f"open/{k}/{file_id}")
+                )
             )
-            for k in keys
-        ]
 
-        # 2 buttons per row for external players
-        for i in range(0, len(player_buttons), 2):
-            rows.append(player_buttons[i:i + 2])
+    # Format all buttons into 2 per row (e.g. [DOWNLOAD] [PLAYIT])
+    rows = []
+    for i in range(0, len(all_buttons), 2):
+        rows.append(all_buttons[i:i + 2])
 
     return InlineKeyboardMarkup(rows)
 
@@ -57,6 +53,7 @@ _MEDIA_FILTER = (
 async def channel_file_handler(client, message):
     try:
         copied = await message.copy(chat_id=BIN_CHANNEL)
+
         if not copied:
             return
 
@@ -64,7 +61,7 @@ async def channel_file_handler(client, message):
             message.document or message.video or message.audio
             or message.photo or message.animation or message.video_note
         )
-        file_name = getattr(media, "file_name", "Unknown File") if media else "Unknown File"
+        file_name = getattr(media, "file_name", "Unknown") if media else "Unknown"
         file_size = getattr(media, "file_size", 0) or 0
         mime_type = getattr(media, "mime_type", "application/octet-stream") or "application/octet-stream"
 
@@ -76,13 +73,7 @@ async def channel_file_handler(client, message):
             uploader_id=message.chat.id
         )
 
-        video_exts = ('.mkv', '.mp4', '.avi', '.mov', '.flv', '.wmv', '.m4v', '.webm', '.3gp')
-        is_video = (
-            message.video is not None 
-            or "video" in mime_type.lower() 
-            or file_name.lower().endswith(video_exts)
-        )
-
+        is_video = bool(message.video) or "video" in mime_type
         markup = await make_channel_buttons(copied.id, is_video)
 
         await asyncio.sleep(1)
@@ -93,10 +84,10 @@ async def channel_file_handler(client, message):
             reply_markup=markup
         )
 
-        logger.info(f"✅ Buttons added to Channel Post: {message.id}")
+        print(f"✅ Buttons added to Channel Post: {message.id}")
 
     except Exception as e:
-        logger.error(f"❌ Channel Post Error in Chat {message.chat.id}: {e}")
+        print(f"❌ Error in Channel {message.chat.id}: {e}")
 
 
 @Client.on_edited_message(filters.channel & _MEDIA_FILTER, group=1)
