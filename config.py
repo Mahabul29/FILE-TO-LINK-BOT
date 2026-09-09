@@ -27,9 +27,10 @@ FQDN = os.environ.get("FQDN", "localhost")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
 
 # --- External Players Configuration ---
+# Keys MUST be simple ASCII without spaces. Labels hold the display text.
 PLAYERS = {
-    "ᴠʟᴄ ᴘʟᴀʏᴇʀ":     {"package": "org.videolan.vlc",           "label": "ᴠʟᴄ ᴘʟᴀʏᴇʀ"},
-    "ᴍx ᴘʟᴀʏᴇʀ":      {"package": "com.mxtech.videoplayer.ad",  "label": "ᴍx ᴘʟᴀʏᴇʀ"},
-    "sᴘʟᴀʏᴇʀ": {"package": "com.ttee.leeplayer",          "label": "ꜱᴘʟᴀʏᴇʀ"},
-    "ᴘʟᴀʏɪᴛ":  {"package": "com.playit.videoplayer",      "label": "ᴘʟᴀʏɪᴛ"},
+    "vlc":     {"package": "org.videolan.vlc",           "label": "ᴠʟᴄ ᴘʟᴀʏᴇʀ"},
+    "mx":      {"package": "com.mxtech.videoplayer.ad",  "label": "ᴍx ᴘʟᴀʏᴇʀ"},
+    "splayer": {"package": "com.ttee.leeplayer",          "label": "ꜱᴘʟᴀʏᴇʀ"},
+    "playit":  {"package": "com.playit.videoplayer",      "label": "ᴘʟᴀʏɪᴛ"},
 }
