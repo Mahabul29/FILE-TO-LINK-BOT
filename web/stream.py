@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import quote
 from aiohttp import web
 from config import BIN_CHANNEL, FQDN
 
@@ -24,14 +25,19 @@ async def video_player(request):
 
         file_name, mime_type, file_size = _media_info(media)
         size_mb = round(file_size / (1024 * 1024), 2)
-        ext = mime_type.split("/")[-1].lower()
+
+        # NEW: filename is now embedded in the stream URL itself,
+        # so browsers AND external players (VLC, MX Player, PLAYit, etc.)
+        # pick up the real name instead of a generic one.
+        safe_name = quote(file_name)
+        stream_path = f"/stream/{file_id}/{safe_name}"
 
         if "video" in mime_type:
             icon = "🎬"
             file_type = "Video"
             player_tag = f'''
             <video controls autoplay playsinline preload="metadata">
-                <source src="/stream/{file_id}" type="{mime_type}">
+                <source src="{stream_path}" type="{mime_type}">
                 Your browser does not support this video.
             </video>
             '''
@@ -41,7 +47,7 @@ async def video_player(request):
             file_type = "Audio"
             player_tag = f'''
             <audio controls autoplay preload="metadata">
-                <source src="/stream/{file_id}" type="{mime_type}">
+                <source src="{stream_path}" type="{mime_type}">
                 Your browser does not support this audio.
             </audio>
             '''
@@ -61,6 +67,8 @@ async def video_player(request):
         file_type = "File"
         player_tag = ""
         playable_note = "<p class='warn'>⚠️ Could not fetch file info.</p>"
+        safe_name = quote(file_name)
+        stream_path = f"/stream/{file_id}/{safe_name}"
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     download_url = f"https://{clean_fqdn}/dl/{file_id}"
@@ -233,6 +241,8 @@ async def video_player(request):
 
 
 async def stream_handler(request):
+    # file_id is always in match_info; filename (if present in the URL) is
+    # purely cosmetic for external players and is ignored for lookup.
     file_id = request.match_info.get("file_id")
     bot_client = request.app["bot_client"]
 
@@ -261,9 +271,10 @@ async def stream_handler(request):
                 end = file_size - 1
                 status = 200
 
+        encoded_name = quote(file_name)
         headers = {
             "Content-Type": mime_type if mime_type != "unknown" else "application/octet-stream",
-            "Content-Disposition": f'inline; filename="{file_name}"',
+            "Content-Disposition": f'inline; filename="{file_name}"; filename*=UTF-8\'\'{encoded_name}',
             "Accept-Ranges": "bytes",
         }
 
@@ -308,9 +319,10 @@ async def download_handler(request):
 
         file_name, mime_type, file_size = _media_info(media)
 
+        encoded_name = quote(file_name)
         headers = {
             "Content-Type": mime_type if mime_type != "unknown" else "application/octet-stream",
-            "Content-Disposition": f'attachment; filename="{file_name}"',
+            "Content-Disposition": f'attachment; filename="{file_name}"; filename*=UTF-8\'\'{encoded_name}',
             "Content-Length": str(file_size),
             "Accept-Ranges": "bytes",
         }
@@ -327,3 +339,4 @@ async def download_handler(request):
     except Exception as e:
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
+        
