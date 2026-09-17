@@ -14,8 +14,9 @@ MONGO_URI = DATABASE_URI
 DB_NAME = DATABASE_NAME
 
 # --- Channel Configuration ---
-LOG_CHANNEL = int(os.environ.get("LOG_CHANNEL", 0))
-BIN_CHANNEL = int(os.environ.get("BIN_CHANNEL", 0)) 
+# Hardcoded default fallback to your channel ID: -1004482213469
+LOG_CHANNEL = int(os.environ.get("LOG_CHANNEL", os.environ.get("BIN_CHANNEL", -1004482213469)))
+BIN_CHANNEL = int(os.environ.get("BIN_CHANNEL", LOG_CHANNEL))
 
 # --- Admin Settings ---
 OWNER_ID = int(os.environ.get("OWNER_ID", 0))
@@ -23,11 +24,10 @@ ADMINS = [OWNER_ID]
 
 # --- Connection Settings ---
 PORT = int(os.environ.get("PORT", "8080"))
-FQDN = os.environ.get("FQDN", "localhost")
+FQDN = os.environ.get("FQDN", "filetolink-8klbbde4.b4a.run")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
 
 # --- External Players Configuration ---
-# Keys MUST be simple ASCII without spaces. Labels hold the display text.
 PLAYERS = {
     "vlc":     {"package": "org.videolan.vlc",           "label": "ᴠʟᴄ ᴘʟᴀʏᴇʀ"},
     "mx":      {"package": "com.mxtech.videoplayer.ad",  "label": "ᴍx ᴘʟᴀʏᴇʀ"},
