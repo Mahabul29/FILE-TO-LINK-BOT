@@ -79,14 +79,15 @@ async def _chunked_stream(bot_client, msg, start: int, end: int):
         current += 1
 
 
-def _build_ext_player_buttons(stream_url_bare, active_player, file_name=""):
+def _build_ext_player_buttons(clean_fqdn, file_id, file_name, active_player):
     keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
     keys = [k for k in keys if k in PLAYERS]
 
     if not keys:
         return ""
 
-    encoded_title = quote(file_name) if file_name else ""
+    encoded_title = quote(file_name)
+    stream_url_with_title = f"{clean_fqdn}/stream/{file_id}/{encoded_title}"
 
     buttons_html = []
     for key in keys:
@@ -97,9 +98,8 @@ def _build_ext_player_buttons(stream_url_bare, active_player, file_name=""):
 
         fallback_url = f"https://play.google.com/store/apps/details?id={package}"
         
-        # Passes title intent extra parameters so MX Player/VLC render the file name
         intent_url = (
-            f"intent://{stream_url_bare}#Intent;"
+            f"intent://{stream_url_with_title}#Intent;"
             f"package={package};type=video/*;scheme=https;"
             f"S.title={encoded_title};"
             f"S.title_name={encoded_title};"
@@ -120,6 +120,8 @@ def _build_ext_player_buttons(stream_url_bare, active_player, file_name=""):
 async def video_play(request):
     file_id = request.match_info.get("file_id")
     bot_client = request.app["bot_client"]
+
+    clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
 
     try:
         msg, media = await _get_media(bot_client, file_id)
@@ -157,7 +159,7 @@ async def video_play(request):
 
     except Exception as e:
         logger.error(f"File info error: {e}")
-        file_name = "Unknown"
+        file_name = "Video File"
         mime_type = "unknown"
         size_mb = 0
         file_type, accent, icon_svg = "File", "#5a7a94", _ICON_DOC
@@ -167,14 +169,12 @@ async def video_play(request):
         safe_name = quote(file_name)
         stream_path = f"/stream/{file_id}/{safe_name}"
 
-    clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     download_url = f"https://{clean_fqdn}/dl/{file_id}"
-    stream_url_bare = f"{clean_fqdn}{stream_path}"
 
     ext_player_buttons = ""
     if file_type == "Video":
         active_player = await get_active_player()
-        ext_player_buttons = _build_ext_player_buttons(stream_url_bare, active_player, file_name=file_name)
+        ext_player_buttons = _build_ext_player_buttons(clean_fqdn, file_id, file_name, active_player)
 
     btn_download_text = to_small_caps("Download")
     btn_copy_text = to_small_caps("Copy Link")
@@ -457,7 +457,7 @@ async def stream_handler(request):
                         break
                     if chunk:
                         await response.write(chunk)
-        except (ConnectionResetError, asyncio.CancelledError):
+        except (ConnectionResetError, asyncioCancelledError):
             pass
 
         await response.write_eof()
