@@ -79,12 +79,14 @@ async def _chunked_stream(bot_client, msg, start: int, end: int):
         current += 1
 
 
-def _build_ext_player_buttons(stream_url_bare, active_player):
+def _build_ext_player_buttons(stream_url_bare, active_player, file_name=""):
     keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
     keys = [k for k in keys if k in PLAYERS]
 
     if not keys:
         return ""
+
+    encoded_title = quote(file_name) if file_name else ""
 
     buttons_html = []
     for key in keys:
@@ -94,14 +96,17 @@ def _build_ext_player_buttons(stream_url_bare, active_player):
             label = f"{label} Player"
 
         fallback_url = f"https://play.google.com/store/apps/details?id={package}"
+        
+        # Passes title intent extra parameters so MX Player/VLC render the file name
         intent_url = (
             f"intent://{stream_url_bare}#Intent;"
             f"package={package};type=video/*;scheme=https;"
+            f"S.title={encoded_title};"
+            f"S.title_name={encoded_title};"
             f"S.browser_fallback_url={fallback_url};"
             f"end"
         )
         css_class = _PLAYER_BTN_CLASS.get(key, "btn-vlc")
-        # Apply Small Caps only to the button label
         styled_label = to_small_caps(label)
         buttons_html.append(f'<a href="{intent_url}" class="btn {css_class}">{styled_label}</a>')
 
@@ -124,7 +129,6 @@ async def video_play(request):
         file_name, mime_type, file_size = _media_info(media)
         size_mb = round(file_size / (1024 * 1024), 2)
 
-        # Build the filename-aware stream path once, reused everywhere below
         safe_name = quote(file_name)
         stream_path = f"/stream/{file_id}/{safe_name}"
 
@@ -170,9 +174,8 @@ async def video_play(request):
     ext_player_buttons = ""
     if file_type == "Video":
         active_player = await get_active_player()
-        ext_player_buttons = _build_ext_player_buttons(stream_url_bare, active_player)
+        ext_player_buttons = _build_ext_player_buttons(stream_url_bare, active_player, file_name=file_name)
 
-    # Button texts styled in small caps
     btn_download_text = to_small_caps("Download")
     btn_copy_text = to_small_caps("Copy Link")
     btn_copied_text = to_small_caps("Copied!")
@@ -390,9 +393,6 @@ async def video_play(request):
 
 
 async def stream_handler(request):
-    # file_id still comes from match_info regardless of whether the
-    # request hit /stream/{file_id} or /stream/{file_id}/{filename} —
-    # the optional {filename} segment is only for a pretty address bar.
     file_id = request.match_info.get("file_id")
     bot_client = request.app["bot_client"]
 
@@ -422,9 +422,10 @@ async def stream_handler(request):
                 end = file_size - 1
                 status = 200
 
+        encoded_name = quote(file_name)
         headers = {
             "Content-Type": mime_type if mime_type != "unknown" else "application/octet-stream",
-            "Content-Disposition": f'inline; filename="{file_name}"',
+            "Content-Disposition": f'inline; filename="{file_name}"; filename*=UTF-8\'\'{encoded_name}',
             "Accept-Ranges": "bytes",
         }
 
@@ -478,9 +479,10 @@ async def download_handler(request):
 
         file_name, mime_type, file_size = _media_info(media)
 
+        encoded_name = quote(file_name)
         headers = {
             "Content-Type": mime_type if mime_type != "unknown" else "application/octet-stream",
-            "Content-Disposition": f'attachment; filename="{file_name}"',
+            "Content-Disposition": f'attachment; filename="{file_name}"; filename*=UTF-8\'\'{encoded_name}',
             "Content-Length": str(file_size),
             "Accept-Ranges": "bytes",
         }
