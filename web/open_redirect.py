@@ -1,3 +1,4 @@
+import urllib.parse
 from aiohttp import web
 from config import FQDN, PLAYERS
 
@@ -5,7 +6,7 @@ from config import FQDN, PLAYERS
 async def open_in_player(request):
     """
     GET /open/{player}/{file_id}
-    Redirects immediately into the intent:// URL for external players.
+    Redirects into intent:// URL including the sanitized file_name parameter.
     """
     player = request.match_info.get("player")
     file_id = request.match_info.get("file_id")
@@ -15,16 +16,35 @@ async def open_in_player(request):
         return web.Response(text="Unknown player", status=404)
     package, label = info["package"], info["label"]
 
+    # Fetch file name from database/bot client if available, or fallback to default
+    bot_client = request.app.get("bot_client")
+    file_name = "video.mp4"
+    
+    if bot_client:
+        try:
+            db = getattr(bot_client, "db", None)
+            if db:
+                file_data = await db.get_file(file_id)
+                if file_data and "file_name" in file_data:
+                    file_name = file_data["file_name"]
+        except Exception:
+            pass
+
+    # URL-encode the file name so spaces and special characters don't break the route
+    safe_name = urllib.parse.quote(file_name)
+
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").strip().rstrip("/")
     if not clean_fqdn or clean_fqdn == "localhost":
         clean_fqdn = "example.com"
 
-    stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
+    # Appends the filename parameter to the intent URL
+    stream_url_bare = f"{clean_fqdn}/stream/{file_id}/{safe_name}"
     fallback_url = f"https://play.google.com/store/apps/details?id={package}"
 
     intent_url = (
         f"intent://{stream_url_bare}#Intent;"
         f"package={package};type=video/*;scheme=https;"
+        f"S.title={urllib.parse.quote(file_name)};"
         f"S.browser_fallback_url={fallback_url};"
         f"end"
     )
@@ -34,6 +54,7 @@ async def open_in_player(request):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{file_name}</title>
     <meta http-equiv="refresh" content="0;url={intent_url}">
     <script>window.location.href = "{intent_url}";</script>
     <style>
@@ -60,3 +81,4 @@ async def open_in_player(request):
 </body>
 </html>"""
     return web.Response(text=html, content_type="text/html", charset="utf-8")
+    
