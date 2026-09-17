@@ -87,7 +87,7 @@ def _build_ext_player_buttons(clean_fqdn, file_id, file_name, active_player):
         return ""
 
     encoded_title = quote(file_name)
-    stream_url_with_title = f"{clean_fqdn}/stream/{file_id}/{encoded_title}"
+    stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
 
     buttons_html = []
     for key in keys:
@@ -99,7 +99,7 @@ def _build_ext_player_buttons(clean_fqdn, file_id, file_name, active_player):
         fallback_url = f"https://play.google.com/store/apps/details?id={package}"
         
         intent_url = (
-            f"intent://{stream_url_with_title}#Intent;"
+            f"intent://{stream_url_bare}#Intent;"
             f"package={package};type=video/*;scheme=https;"
             f"S.title={encoded_title};"
             f"S.title_name={encoded_title};"
@@ -457,7 +457,7 @@ async def stream_handler(request):
                         break
                     if chunk:
                         await response.write(chunk)
-        except (ConnectionResetError, asyncioCancelledError):
+        except (ConnectionResetError, asyncio.CancelledError):
             pass
 
         await response.write_eof()
