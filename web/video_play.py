@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from urllib.parse import quote
 from aiohttp import web
 from config import BIN_CHANNEL, FQDN, PLAYERS
 from database.settings_db import get_active_player
@@ -123,11 +124,15 @@ async def video_play(request):
         file_name, mime_type, file_size = _media_info(media)
         size_mb = round(file_size / (1024 * 1024), 2)
 
+        # Build the filename-aware stream path once, reused everywhere below
+        safe_name = quote(file_name)
+        stream_path = f"/stream/{file_id}/{safe_name}"
+
         if "video" in mime_type:
             file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = f'''
             <video controls autoplay playsinline preload="metadata">
-                <source src="/stream/{file_id}" type="{mime_type}">
+                <source src="{stream_path}" type="{mime_type}">
                 Your browser does not support this video.
             </video>
             '''
@@ -136,7 +141,7 @@ async def video_play(request):
             file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = f'''
             <audio controls autoplay preload="metadata">
-                <source src="/stream/{file_id}" type="{mime_type}">
+                <source src="{stream_path}" type="{mime_type}">
                 Your browser does not support this audio.
             </audio>
             '''
@@ -155,10 +160,12 @@ async def video_play(request):
         player_tag = ""
         playable_note = "<p class='warn'>⚠️ Could not fetch file info.</p>"
         file_id = request.match_info.get("file_id")
+        safe_name = quote(file_name)
+        stream_path = f"/stream/{file_id}/{safe_name}"
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     download_url = f"https://{clean_fqdn}/dl/{file_id}"
-    stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
+    stream_url_bare = f"{clean_fqdn}{stream_path}"
 
     ext_player_buttons = ""
     if file_type == "Video":
@@ -383,6 +390,9 @@ async def video_play(request):
 
 
 async def stream_handler(request):
+    # file_id still comes from match_info regardless of whether the
+    # request hit /stream/{file_id} or /stream/{file_id}/{filename} —
+    # the optional {filename} segment is only for a pretty address bar.
     file_id = request.match_info.get("file_id")
     bot_client = request.app["bot_client"]
 
