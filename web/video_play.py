@@ -86,8 +86,8 @@ def _build_ext_player_buttons(clean_fqdn, file_id, file_name, active_player):
     if not keys:
         return ""
 
-    encoded_title = quote(file_name)
-    stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
+    encoded_name = quote(file_name)
+    stream_url = f"{clean_fqdn}/stream/{file_id}/{encoded_name}"
 
     buttons_html = []
     for key in keys:
@@ -97,12 +97,10 @@ def _build_ext_player_buttons(clean_fqdn, file_id, file_name, active_player):
             label = f"{label} Player"
 
         fallback_url = f"https://play.google.com/store/apps/details?id={package}"
-        
         intent_url = (
-            f"intent://{stream_url_bare}#Intent;"
+            f"intent://{stream_url}#Intent;"
             f"package={package};type=video/*;scheme=https;"
-            f"S.title={encoded_title};"
-            f"S.title_name={encoded_title};"
+            f"S.title={encoded_name};"
             f"S.browser_fallback_url={fallback_url};"
             f"end"
         )
@@ -131,8 +129,8 @@ async def video_play(request):
         file_name, mime_type, file_size = _media_info(media)
         size_mb = round(file_size / (1024 * 1024), 2)
 
-        safe_name = quote(file_name)
-        stream_path = f"/stream/{file_id}/{safe_name}"
+        encoded_name = quote(file_name)
+        stream_path = f"/stream/{file_id}/{encoded_name}"
 
         if "video" in mime_type:
             file_type, accent, icon_svg = _type_badge(mime_type)
@@ -166,8 +164,7 @@ async def video_play(request):
         player_tag = ""
         playable_note = "<p class='warn'>⚠️ Could not fetch file info.</p>"
         file_id = request.match_info.get("file_id")
-        safe_name = quote(file_name)
-        stream_path = f"/stream/{file_id}/{safe_name}"
+        stream_path = f"/stream/{file_id}/video.mp4"
 
     download_url = f"https://{clean_fqdn}/dl/{file_id}"
 
@@ -499,3 +496,4 @@ async def download_handler(request):
     except Exception as e:
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
+                                      
