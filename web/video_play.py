@@ -560,4 +560,30 @@ async def download_handler(request):
         file_name, mime_type, file_size = _media_info(media)
 
         encoded_name = quote(file_name)
-  
+        headers = {
+            "Content-Type": mime_type if mime_type != "unknown" else "application/octet-stream",
+            "Content-Disposition": f'attachment; filename="{file_name}"; filename*=UTF-8\'\'{encoded_name}',
+            "Content-Length": str(file_size),
+            "Accept-Ranges": "bytes",
+        }
+
+        response = web.StreamResponse(status=200, headers=headers)
+        await response.prepare(request)
+
+        async with _DOWNLOAD_SEMAPHORE:
+            async for chunk in bot_client.stream_media(msg):
+                try:
+                    await response.write(chunk)
+                except (ConnectionResetError, asyncio.CancelledError):
+                    break
+
+        try:
+            await response.write_eof()
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
+        return response
+
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        return web.Response(text=f"❌ Error: {e}", status=500)
+
