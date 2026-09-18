@@ -7,8 +7,17 @@ from database.settings_db import get_active_player
 
 logger = logging.getLogger(__name__)
 
+# --- Tuning ---------------------------------------------------------------
+# Telegram's stream_media() yields fixed-size chunks (usually 1 MiB for
+# Telethon/Pyrogram). We must request chunks aligned to that size and never
+# re-read from byte 0 on a seek -- that is what was burning your CPU.
 CHUNK_SIZE = 1024 * 1024
-_STREAM_SEMAPHORE = asyncio.Semaphore(3)
+CHUNK_TIMEOUT = 20          # seconds to wait for a single chunk before giving up
+MAX_CONCURRENT_STREAMS = 3  # simultaneous /stream connections across all users
+MAX_CONCURRENT_DOWNLOADS = 2
+
+_STREAM_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_STREAMS)
+_DOWNLOAD_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
 
 def to_small_caps(text: str) -> str:
@@ -58,16 +67,55 @@ async def _get_media(bot_client, file_id):
     return msg, media
 
 
+def _parse_range(range_header, file_size):
+    """
+    Parse a 'Range: bytes=start-end' header safely.
+    Returns (start, end, is_partial). Falls back to a full-file response
+    on any malformed input instead of raising, so one bad header can't
+    take down the handler.
+    """
+    if not range_header or not file_size:
+        return 0, max(file_size - 1, 0), False
+
+    try:
+        range_val = range_header.strip().replace("bytes=", "")
+        start_str, _, end_str = range_val.partition("-")
+        start = int(start_str) if start_str else 0
+        end = int(end_str) if end_str else file_size - 1
+
+        if start < 0:
+            start = 0
+        if end >= file_size:
+            end = file_size - 1
+        if start > end:
+            # Unsatisfiable range -- serve the whole file rather than 500
+            return 0, file_size - 1, False
+
+        return start, end, True
+    except (ValueError, IndexError):
+        return 0, file_size - 1, False
+
+
 async def _chunked_stream(bot_client, msg, start: int, end: int):
-    offset = start - (start % CHUNK_SIZE)
-    first_cut = start - offset
+    """
+    Pull only the Telegram chunks that overlap [start, end] and trim the
+    first/last chunk to the exact byte boundaries. This is the piece that
+    must never be replaced with "iterate from 0 and skip bytes" -- doing
+    that re-downloads and re-decrypts the whole file on every seek, which
+    is what pins the CPU at 100%.
+    """
+    offset_chunk = start // CHUNK_SIZE
+    offset_bytes = offset_chunk * CHUNK_SIZE
+    first_cut = start - offset_bytes
     last_cut = (end % CHUNK_SIZE) + 1
-    part_count = ((end - offset) // CHUNK_SIZE) + 1
+    part_count = ((end - offset_bytes) // CHUNK_SIZE) + 1
 
     current = 0
     async for chunk in bot_client.stream_media(
-        msg, offset=offset // CHUNK_SIZE, limit=part_count
+        msg, offset=offset_chunk, limit=part_count
     ):
+        if not chunk:
+            continue
         if part_count == 1:
             yield chunk[first_cut:last_cut]
         elif current == 0:
@@ -77,6 +125,8 @@ async def _chunked_stream(bot_client, msg, start: int, end: int):
         else:
             yield chunk
         current += 1
+        if current >= part_count:
+            break
 
 
 def _build_ext_player_buttons(clean_fqdn, file_id, file_name, active_player):
@@ -132,8 +182,9 @@ async def video_play(request):
         encoded_name = quote(file_name)
         stream_path = f"/stream/{file_id}/{encoded_name}"
 
+        file_type, accent, icon_svg = _type_badge(mime_type)
+
         if "video" in mime_type:
-            file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = f'''
             <video controls autoplay playsinline preload="metadata">
                 <source src="{stream_path}" type="{mime_type}">
@@ -142,7 +193,6 @@ async def video_play(request):
             '''
             playable_note = ""
         elif "audio" in mime_type:
-            file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = f'''
             <audio controls autoplay preload="metadata">
                 <source src="{stream_path}" type="{mime_type}">
@@ -151,7 +201,6 @@ async def video_play(request):
             '''
             playable_note = ""
         else:
-            file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = ""
             playable_note = "<p class='warn'>⚠️ This file may not play in browser. You can download it below.</p>"
 
@@ -163,7 +212,6 @@ async def video_play(request):
         file_type, accent, icon_svg = "File", "#5a7a94", _ICON_DOC
         player_tag = ""
         playable_note = "<p class='warn'>⚠️ Could not fetch file info.</p>"
-        file_id = request.match_info.get("file_id")
         stream_path = f"/stream/{file_id}/video.mp4"
 
     download_url = f"https://{clean_fqdn}/dl/{file_id}"
@@ -401,23 +449,8 @@ async def stream_handler(request):
         file_name, mime_type, file_size = _media_info(media)
 
         range_header = request.headers.get("Range")
-        start = 0
-        end = file_size - 1 if file_size else 0
-        status = 200
-
-        if range_header and file_size:
-            try:
-                range_val = range_header.strip().replace("bytes=", "")
-                parts = range_val.split("-")
-                start = int(parts[0]) if parts[0] else 0
-                end = int(parts[1]) if len(parts) > 1 and parts[1] else file_size - 1
-                if end >= file_size:
-                    end = file_size - 1
-                status = 206
-            except Exception:
-                start = 0
-                end = file_size - 1
-                status = 200
+        start, end, is_partial = _parse_range(range_header, file_size)
+        status = 206 if is_partial else 200
 
         encoded_name = quote(file_name)
         headers = {
@@ -435,9 +468,9 @@ async def stream_handler(request):
         response = web.StreamResponse(status=status, headers=headers)
         await response.prepare(request)
 
-        CHUNK_TIMEOUT = 20
-
         try:
+            # The semaphore caps how many Telegram media streams are being
+            # decrypted at once -- this is what actually protects your CPU.
             async with _STREAM_SEMAPHORE:
                 if file_size:
                     gen = _chunked_stream(bot_client, msg, start, end)
@@ -450,14 +483,32 @@ async def stream_handler(request):
                     except StopAsyncIteration:
                         break
                     except asyncio.TimeoutError:
-                        logger.warning(f"Stream stalled (no data for {CHUNK_TIMEOUT}s) on {file_id}, closing")
+                        logger.warning(
+                            f"Stream stalled (no data for {CHUNK_TIMEOUT}s) on {file_id}, closing"
+                        )
                         break
                     if chunk:
-                        await response.write(chunk)
+                        try:
+                            await response.write(chunk)
+                        except (ConnectionResetError, asyncio.CancelledError):
+                            # Client closed/seeked away -- stop pulling more
+                            # chunks from Telegram immediately instead of
+                            # continuing to decrypt data nobody wants.
+                            break
         except (ConnectionResetError, asyncio.CancelledError):
             pass
+        finally:
+            aclose = getattr(gen, "aclose", None)
+            if aclose:
+                try:
+                    await aclose()
+                except Exception:
+                    pass
 
-        await response.write_eof()
+        try:
+            await response.write_eof()
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
         return response
 
     except Exception as e:
@@ -487,10 +538,17 @@ async def download_handler(request):
         response = web.StreamResponse(status=200, headers=headers)
         await response.prepare(request)
 
-        async for chunk in bot_client.stream_media(msg):
-            await response.write(chunk)
+        async with _DOWNLOAD_SEMAPHORE:
+            async for chunk in bot_client.stream_media(msg):
+                try:
+                    await response.write(chunk)
+                except (ConnectionResetError, asyncio.CancelledError):
+                    break
 
-        await response.write_eof()
+        try:
+            await response.write_eof()
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
         return response
 
     except Exception as e:
