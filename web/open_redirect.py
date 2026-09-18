@@ -1,6 +1,9 @@
+import logging
 import urllib.parse
 from aiohttp import web
-from config import FQDN, PLAYERS
+from config import BIN_CHANNEL, FQDN, PLAYERS
+
+logger = logging.getLogger(__name__)
 
 
 async def open_in_player(request):
@@ -14,37 +17,36 @@ async def open_in_player(request):
     info = PLAYERS.get(player)
     if not info:
         return web.Response(text="Unknown player", status=404)
-    package, label = info["package"], info["label"]
 
-    # Fetch file name from database/bot client if available, or fallback to default
+    package = info["package"]
+    label = info["label"]
+
     bot_client = request.app.get("bot_client")
     file_name = "video.mp4"
-    
-    if bot_client:
-        try:
-            db = getattr(bot_client, "db", None)
-            if db:
-                file_data = await db.get_file(file_id)
-                if file_data and "file_name" in file_data:
-                    file_name = file_data["file_name"]
-        except Exception:
-            pass
 
-    # URL-encode the file name so spaces and special characters don't break the route
+    if bot_client and file_id:
+        try:
+            msg = await bot_client.get_messages(int(BIN_CHANNEL), int(file_id))
+            media = msg.document or msg.video or msg.audio or msg.photo
+            if media:
+                file_name = getattr(media, "file_name", "video.mp4") or "video.mp4"
+        except Exception as e:
+            logger.error(f"Error fetching filename for intent redirect: {e}")
+
+    # URL-encode the file name so spaces and special characters don't break the intent route
     safe_name = urllib.parse.quote(file_name)
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").strip().rstrip("/")
     if not clean_fqdn or clean_fqdn == "localhost":
         clean_fqdn = "example.com"
 
-    # Appends the filename parameter to the intent URL
     stream_url_bare = f"{clean_fqdn}/stream/{file_id}/{safe_name}"
     fallback_url = f"https://play.google.com/store/apps/details?id={package}"
 
     intent_url = (
         f"intent://{stream_url_bare}#Intent;"
         f"package={package};type=video/*;scheme=https;"
-        f"S.title={urllib.parse.quote(file_name)};"
+        f"S.title={safe_name};"
         f"S.browser_fallback_url={fallback_url};"
         f"end"
     )
