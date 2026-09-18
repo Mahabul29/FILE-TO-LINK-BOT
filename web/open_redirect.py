@@ -6,10 +6,15 @@ from config import BIN_CHANNEL, FQDN, PLAYERS
 logger = logging.getLogger(__name__)
 
 
+def _intent_safe(text: str) -> str:
+    """Escape only characters that break intent:// syntax (';' is the field separator)."""
+    return text.replace(";", "%3B")
+
+
 async def open_in_player(request):
     """
     GET /open/{player}/{file_id}
-    Redirects into intent:// URL including the sanitized file_name parameter.
+    Redirects into intent:// URL pointing at the plain stream endpoint.
     """
     player = request.match_info.get("player")
     file_id = request.match_info.get("file_id")
@@ -33,19 +38,21 @@ async def open_in_player(request):
         except Exception as e:
             logger.error(f"Error fetching filename for intent redirect: {e}")
 
-    safe_name = urllib.parse.quote(file_name)
+    # Title shown inside the player — kept human-readable
+    safe_name_for_title = _intent_safe(file_name)
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").strip().rstrip("/")
     if not clean_fqdn or clean_fqdn == "localhost":
         clean_fqdn = "example.com"
 
-    stream_url_bare = f"{clean_fqdn}/stream/{file_id}/{safe_name}"
+    # Plain stream URL, no filename segment — matches the fast/clean behavior
+    stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
     fallback_url = f"https://play.google.com/store/apps/details?id={package}"
 
     intent_url = (
         f"intent://{stream_url_bare}#Intent;"
         f"package={package};type=video/*;scheme=https;"
-        f"S.title={safe_name};"
+        f"S.title={safe_name_for_title};"
         f"S.browser_fallback_url={fallback_url};"
         f"end"
     )
@@ -82,4 +89,3 @@ async def open_in_player(request):
 </body>
 </html>"""
     return web.Response(text=html, content_type="text/html", charset="utf-8")
-    
