@@ -96,13 +96,20 @@ def _parse_range(range_header, file_size):
         return 0, file_size - 1, False
 
 
-async def _chunked_stream(bot_client, msg, start: int, end: int):
+async def _chunked_stream(bot_client, msg, start: int, end: int, prefetch: int = 2):
     """
     Pull only the Telegram chunks that overlap [start, end] and trim the
     first/last chunk to the exact byte boundaries. This is the piece that
     must never be replaced with "iterate from 0 and skip bytes" -- doing
     that re-downloads and re-decrypts the whole file on every seek, which
     is what pins the CPU at 100%.
+
+    `prefetch` controls how many raw Telegram chunks we fetch ahead of what
+    we've yielded so far. Without this, the loop is fetch -> write -> fetch
+    -> write in lockstep, and any latency talking to Telegram shows up
+    directly as buffering with nothing smoothing it out. With prefetch, the
+    next chunk is already downloading while the current one is being
+    written to the client, hiding network latency instead of stacking it.
     """
     offset_chunk = start // CHUNK_SIZE
     offset_bytes = offset_chunk * CHUNK_SIZE
@@ -110,23 +117,48 @@ async def _chunked_stream(bot_client, msg, start: int, end: int):
     last_cut = (end % CHUNK_SIZE) + 1
     part_count = ((end - offset_bytes) // CHUNK_SIZE) + 1
 
-    current = 0
-    async for chunk in bot_client.stream_media(
-        msg, offset=offset_chunk, limit=part_count
-    ):
-        if not chunk:
-            continue
-        if part_count == 1:
-            yield chunk[first_cut:last_cut]
-        elif current == 0:
-            yield chunk[first_cut:]
-        elif current == part_count - 1:
-            yield chunk[:last_cut]
-        else:
-            yield chunk
-        current += 1
-        if current >= part_count:
-            break
+    queue: asyncio.Queue = asyncio.Queue(maxsize=max(prefetch, 1))
+    SENTINEL = object()
+
+    async def _producer():
+        current = 0
+        try:
+            async for chunk in bot_client.stream_media(
+                msg, offset=offset_chunk, limit=part_count
+            ):
+                if not chunk:
+                    continue
+                if part_count == 1:
+                    piece = chunk[first_cut:last_cut]
+                elif current == 0:
+                    piece = chunk[first_cut:]
+                elif current == part_count - 1:
+                    piece = chunk[:last_cut]
+                else:
+                    piece = chunk
+                await queue.put(piece)
+                current += 1
+                if current >= part_count:
+                    break
+        except Exception as e:
+            logger.error(f"Prefetch producer error: {e}")
+        finally:
+            await queue.put(SENTINEL)
+
+    producer_task = asyncio.create_task(_producer())
+    try:
+        while True:
+            piece = await queue.get()
+            if piece is SENTINEL:
+                break
+            yield piece
+    finally:
+        if not producer_task.done():
+            producer_task.cancel()
+            try:
+                await producer_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 def _build_ext_player_buttons(clean_fqdn, file_id, file_name, active_player):
@@ -528,29 +560,4 @@ async def download_handler(request):
         file_name, mime_type, file_size = _media_info(media)
 
         encoded_name = quote(file_name)
-        headers = {
-            "Content-Type": mime_type if mime_type != "unknown" else "application/octet-stream",
-            "Content-Disposition": f'attachment; filename="{file_name}"; filename*=UTF-8\'\'{encoded_name}',
-            "Content-Length": str(file_size),
-            "Accept-Ranges": "bytes",
-        }
-
-        response = web.StreamResponse(status=200, headers=headers)
-        await response.prepare(request)
-
-        async with _DOWNLOAD_SEMAPHORE:
-            async for chunk in bot_client.stream_media(msg):
-                try:
-                    await response.write(chunk)
-                except (ConnectionResetError, asyncio.CancelledError):
-                    break
-
-        try:
-            await response.write_eof()
-        except (ConnectionResetError, asyncio.CancelledError):
-            pass
-        return response
-
-    except Exception as e:
-        logger.error(f"Download error: {e}")
-        return web.Response(text=f"❌ Error: {e}", status=500)
+  
