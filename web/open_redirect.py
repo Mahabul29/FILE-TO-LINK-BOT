@@ -33,7 +33,6 @@ async def open_in_player(request):
         except Exception as e:
             logger.error(f"Error fetching filename for intent redirect: {e}")
 
-    # URL-encode the file name so spaces and special characters don't break the intent route
     safe_name = urllib.parse.quote(file_name)
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").strip().rstrip("/")
