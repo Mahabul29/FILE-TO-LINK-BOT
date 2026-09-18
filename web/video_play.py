@@ -1,32 +1,4 @@
-Import logging
-from aiohttp import web
-from config import PORT
-from web.video_play import video_play, stream_handler, download_handler
-from web.home import home_page
-from web.open_redirect import open_in_player
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-async def web_server(bot_client):
-    app = web.Application(client_max_size=30 * 1024 * 1024)
-    app["bot_client"] = bot_client
-
-    app.router.add_get("/", home_page)
-    app.router.add_get("/watch/{file_id}", video_play)
-    app.router.add_get("/stream/{file_id}", stream_handler)
-    app.router.add_get("/stream/{file_id}/{filename}", stream_handler)
-    app.router.add_get("/dl/{file_id}", download_handler)
-    app.router.add_get("/open/{player}/{file_id}", open_in_player)
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", int(PORT))
-    await site.start()
-    logger.info(f"✅ Web server started on port {PORT}")
-    return runner
-    import asyncio
+import asyncio
 import logging
 from urllib.parse import quote
 from aiohttp import web
@@ -107,9 +79,14 @@ async def _chunked_stream(bot_client, msg, start: int, end: int):
         current += 1
 
 
-def _build_ext_player_buttons(stream_url_bare, active_player):
+def _build_ext_player_buttons(clean_fqdn, file_id, active_player):
     keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
     keys = [k for k in keys if k in PLAYERS]
+
+    # Fallback: if the configured player isn't valid/available, show all
+    # known players instead of leaving the user with no way to play at all.
+    if not keys:
+        keys = list(PLAYERS.keys())
 
     if not keys:
         return ""
@@ -117,21 +94,15 @@ def _build_ext_player_buttons(stream_url_bare, active_player):
     buttons_html = []
     for key in keys:
         info = PLAYERS[key]
-        package, label = info["package"], info["label"]
+        label = info["label"]
         if "Player" not in label and "player" not in label.lower():
             label = f"{label} Player"
 
-        fallback_url = f"https://play.google.com/store/apps/details?id={package}"
-        intent_url = (
-            f"intent://{stream_url_bare}#Intent;"
-            f"package={package};type=video/*;scheme=https;"
-            f"S.browser_fallback_url={fallback_url};"
-            f"end"
-        )
+        open_url = f"https://{clean_fqdn}/open/{key}/{file_id}"
         css_class = _PLAYER_BTN_CLASS.get(key, "btn-vlc")
         # Apply Small Caps only to the button label
         styled_label = to_small_caps(label)
-        buttons_html.append(f'<a href="{intent_url}" class="btn {css_class}">{styled_label}</a>')
+        buttons_html.append(f'<a href="{open_url}" class="btn {css_class}">{styled_label}</a>')
 
     rows = ""
     for i in range(0, len(buttons_html), 2):
@@ -158,13 +129,8 @@ async def video_play(request):
 
         if "video" in mime_type:
             file_type, accent, icon_svg = _type_badge(mime_type)
-            player_tag = f'''
-            <video controls autoplay playsinline preload="metadata">
-                <source src="{stream_path}" type="{mime_type}">
-                Your browser does not support this video.
-            </video>
-            '''
-            playable_note = ""
+            player_tag = ""
+            playable_note = "<p class='warn'>▶️ This video can only be played using an external player. Tap a player button below.</p>"
         elif "audio" in mime_type:
             file_type, accent, icon_svg = _type_badge(mime_type)
             player_tag = f'''
@@ -188,17 +154,14 @@ async def video_play(request):
         player_tag = ""
         playable_note = "<p class='warn'>⚠️ Could not fetch file info.</p>"
         file_id = request.match_info.get("file_id")
-        safe_name = quote(file_name)
-        stream_path = f"/stream/{file_id}/{safe_name}"
 
     clean_fqdn = FQDN.replace("https://", "").replace("http://", "").rstrip("/")
     download_url = f"https://{clean_fqdn}/dl/{file_id}"
-    stream_url_bare = f"{clean_fqdn}{stream_path}"
 
     ext_player_buttons = ""
     if file_type == "Video":
         active_player = await get_active_player()
-        ext_player_buttons = _build_ext_player_buttons(stream_url_bare, active_player)
+        ext_player_buttons = _build_ext_player_buttons(clean_fqdn, file_id, active_player)
 
     # Button texts styled in small caps
     btn_download_text = to_small_caps("Download")
@@ -288,15 +251,12 @@ async def video_play(request):
             font-weight: 600;
             font-size: 12px;
         }}
-        video, audio {{
+        audio {{
             width: 100%;
             max-width: 850px;
             border-radius: 10px;
             background: #000;
             margin-bottom: 15px;
-        }}
-        video {{
-            border: 1px solid #2481cc44;
         }}
         .warn {{
             color: #f39c12;
