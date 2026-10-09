@@ -28,9 +28,12 @@ FQDN = os.environ.get("FQDN", "filetolink-8klbbde4.b4a.run")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
 
 # --- External Players Configuration ---
+# NOTE: replace PUT_PACKAGE_HERE with PlayMast's real package name
+# (Play Store link -> the part after "id=")
 PLAYERS = {
-    "vlc":     {"package": "org.videolan.vlc",           "label": "ᴠʟᴄ ᴘʟᴀʏᴇʀ"},
-    "mx":      {"package": "com.mxtech.videoplayer.ad",  "label": "ᴍx ᴘʟᴀʏᴇʀ"},
-    "splayer": {"package": "com.ttee.leeplayer",          "label": "ꜱᴘʟᴀʏᴇʀ"},
-    "playit":  {"package": "com.playit.videoplayer",      "label": "ᴘʟᴀʏɪᴛ"},
+    "vlc":      {"package": "org.videolan.vlc",           "label": "ᴠʟᴄ ᴘʟᴀʏᴇʀ"},
+    "mx":       {"package": "com.mxtech.videoplayer.ad",  "label": "ᴍx ᴘʟᴀʏᴇʀ"},
+    "splayer":  {"package": "com.ttee.leeplayer",         "label": "ꜱᴘʟᴀʏᴇʀ"},
+    "playit":   {"package": "com.playit.videoplayer",     "label": "ᴘʟᴀʏɪᴛ"},
+    "playmast": {"package": "PUT_PACKAGE_HERE",           "label": "ᴘʟᴀʏᴍᴀꜱᴛ"},
 }
