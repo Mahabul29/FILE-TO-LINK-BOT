@@ -26,6 +26,9 @@ async def open_in_player(request):
     package = info["package"]
     label = info["label"]
 
+    # ?action=download -> EvaPlayer opens and starts downloading (instead of streaming)
+    download_mode = player == "evaplayer" and request.query.get("action") == "download"
+
     bot_client = request.app.get("bot_client")
     file_name = "video.mp4"
 
@@ -46,13 +49,15 @@ async def open_in_player(request):
         clean_fqdn = "example.com"
 
     # Plain stream URL, no filename segment — matches the fast/clean behavior
-    stream_url_bare = f"{clean_fqdn}/stream/{file_id}"
+    stream_url_bare = f"{clean_fqdn}/{'dl' if download_mode else 'stream'}/{file_id}"
+    download_extra = "B.download=true;" if download_mode else ""
     fallback_url = f"https://play.google.com/store/apps/details?id={package}"
 
     intent_url = (
         f"intent://{stream_url_bare}#Intent;"
         f"package={package};type=video/*;scheme=https;"
         f"S.title={safe_name_for_title};"
+        f"{download_extra}"
         f"S.browser_fallback_url={fallback_url};"
         f"end"
     )
@@ -83,9 +88,10 @@ async def open_in_player(request):
 </head>
 <body>
     <div>
-        <p>Opening in {label}...</p>
+        <p>{'Opening EvaPlayer to download' if download_mode else 'Opening in ' + label}...</p>
         <p><a href="{intent_url}">Tap here if it doesn't open automatically</a></p>
     </div>
 </body>
 </html>"""
     return web.Response(text=html, content_type="text/html", charset="utf-8")
+    
