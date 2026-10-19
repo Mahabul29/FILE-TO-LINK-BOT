@@ -74,6 +74,12 @@ async def link_generator_handler(client, message):
         )
 
         if is_video:
+            buttons.append([
+                InlineKeyboardButton(
+                    "Download From EvaPLAYER",
+                    url=f"https://{base_url}/open/evaplayer/{copied_msg.id}?action=download"
+                )
+            ])
             player_rows = await build_player_buttons(base_url, copied_msg.id)
             buttons.extend(player_rows)
 
@@ -87,4 +93,4 @@ async def link_generator_handler(client, message):
 
     except Exception as e:
         await msg.edit_text(f"<b>Error:</b> <code>{str(e)}</code>")
-        
+
