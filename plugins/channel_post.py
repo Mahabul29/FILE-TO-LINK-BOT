@@ -40,6 +40,14 @@ async def make_channel_buttons(file_id, is_video):
     for i in range(0, len(all_buttons), 2):
         rows.append(all_buttons[i:i + 2])
 
+    if is_video:
+        rows.append([
+            InlineKeyboardButton(
+                "Download From EvaPLAYER",
+                url=build_clean_url(FQDN, f"open/evaplayer/{file_id}?action=download")
+            )
+        ])
+
     return InlineKeyboardMarkup(rows)
 
 
@@ -94,3 +102,4 @@ async def channel_file_handler(client, message):
 async def channel_edit_handler(client, message):
     if not message.reply_markup:
         await channel_file_handler(client, message)
+        
