@@ -162,6 +162,11 @@ async def video_play(request):
     if file_type == "Video":
         active_player = await get_active_player()
         ext_player_buttons = _build_ext_player_buttons(clean_fqdn, file_id, active_player)
+        eva_dl_url = f"https://{clean_fqdn}/open/evaplayer/{file_id}?action=download"
+        ext_player_buttons += (
+            f'<div class="ext-buttons"><a href="{eva_dl_url}" class="btn btn-download">'
+            f'{to_small_caps("Download From EvaPLAYER")}</a></div>\n'
+        )
 
     # Button texts styled in small caps
     btn_download_text = to_small_caps("Download")
@@ -485,3 +490,4 @@ async def download_handler(request):
     except Exception as e:
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
+        
