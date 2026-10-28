@@ -49,7 +49,13 @@ UPLOAD_TIMEOUT_MIN = int(os.environ.get("UPLOAD_TIMEOUT_MIN", "120"))
 # How many files may upload to Streamtape at the same time
 UPLOAD_PARALLEL = max(1, int(os.environ.get("UPLOAD_PARALLEL", "2")))
 
-# How /sv/<id> (the direct-video link for apps) serves the Streamtape file:
+# --- DoodStream (auto upload + auto restore) ---
+# Get the API key from DoodStream -> Account Settings -> API
+DOODSTREAM_KEY = os.environ.get("DOODSTREAM_KEY", "")
+# Domain used for DoodStream page/embed links (DoodStream changes domains often)
+DOODSTREAM_DOMAIN = os.environ.get("DOODSTREAM_DOMAIN", "doodstream.com").strip().replace("https://", "").strip("/")
+
+# How /sv/<id> and /dv/<id> (the direct-video link for apps) serves the Streamtape file:
 #   redirect = send the app straight to Streamtape's video URL (no bot bandwidth)
 #   proxy    = the bot streams it through itself (use this if redirect does not play)
 STREAM_MODE = os.environ.get("STREAM_MODE", "proxy").lower()
