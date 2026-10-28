@@ -46,6 +46,11 @@ def stable_link(file_id, embed=False):
     return f"https://{_base()}/{'se' if embed else 's'}/{file_id}"
 
 
+def video_link(file_id):
+    """Direct-video link for apps (ExoPlayer etc.). Never changes."""
+    return f"https://{_base()}/sv/{file_id}"
+
+
 def streamtape_url(st_id, name, embed=False):
     if embed:
         return f"https://streamtape.com/e/{st_id}"
@@ -168,6 +173,40 @@ async def file_status(ids):
     return out
 
 
+_direct_cache = {}   # st_id -> (url, expires_at)
+_direct_locks = {}
+
+
+async def direct_url(st_id):
+    """Real video file URL from Streamtape (ticket -> wait -> link). Cached for 30 minutes."""
+    hit = _direct_cache.get(st_id)
+    if hit and hit[1] > time.time():
+        return hit[0]
+    lock = _direct_locks.setdefault(st_id, asyncio.Lock())
+    async with lock:
+        hit = _direct_cache.get(st_id)
+        if hit and hit[1] > time.time():
+            return hit[0]
+        try:
+            t = await _api("/file/dlticket", file=st_id)
+            if t.get("status") != 200 or not t.get("result"):
+                logger.warning(f"[streamtape] dlticket failed for {st_id}: {t.get('msg') or t.get('status')}")
+                return None
+            ticket = t["result"]["ticket"]
+            wait = int(t["result"].get("wait_time") or 0)
+            await asyncio.sleep(min(wait, 20) + 1)
+            d = await _api("/file/dl", file=st_id, ticket=ticket)
+            if d.get("status") != 200 or not (d.get("result") or {}).get("url"):
+                logger.warning(f"[streamtape] dl failed for {st_id}: {d.get('msg') or d.get('status')}")
+                return None
+            url = d["result"]["url"]
+            _direct_cache[st_id] = (url, time.time() + 1800)
+            return url
+        except Exception as e:
+            logger.error(f"[streamtape] direct url error {st_id}: {e}")
+            return None
+
+
 async def is_alive(file_id):
     """True / False, or None if unknown. Cached for 10 minutes in the DB row."""
     rec = await db.get(file_id)
@@ -216,3 +255,4 @@ async def heal_loop():
         except Exception as e:
             logger.error(f"[streamtape] heal loop error: {e}")
         await asyncio.sleep(HEAL_INTERVAL_MIN * 60)
+      
