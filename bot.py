@@ -3,7 +3,7 @@ import logging
 from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN, BIN_CHANNEL
 from web.server import web_server
-from utils import streamtape
+from utils import streamtape, doodstream
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,10 +37,19 @@ class Bot(Client):
         else:
             print("ℹ️ Streamtape disabled (set STREAMTAPE_LOGIN and STREAMTAPE_KEY to enable)")
 
+        self.dood_task = None
+        if doodstream.enabled:
+            self.dood_task = asyncio.create_task(doodstream.heal_loop())
+            print("✅ DoodStream auto-restore started")
+        else:
+            print("ℹ️ DoodStream disabled (set DOODSTREAM_KEY to enable)")
+
     async def stop(self, *args):
         if getattr(self, "heal_task", None):
             self.heal_task.cancel()
+        if getattr(self, "dood_task", None):
+            self.dood_task.cancel()
         await super().stop()
         await self.runner.cleanup()
         print("🛑 Bot Stopped")
-        
+
