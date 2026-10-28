@@ -46,9 +46,12 @@ def stable_link(file_id, embed=False):
     return f"https://{_base()}/{'se' if embed else 's'}/{file_id}"
 
 
-def video_link(file_id):
-    """Direct-video link for apps (ExoPlayer etc.). Never changes."""
-    return f"https://{_base()}/sv/{file_id}"
+def video_link(file_id, name=None):
+    """Direct-video link for any video player / app. Never changes."""
+    n = (name or "video.mp4").replace("/", "_")
+    if "." not in n[-6:]:
+        n += ".mp4"
+    return f"https://{_base()}/sv/{file_id}/{quote(n)}"
 
 
 def streamtape_url(st_id, name, embed=False):
@@ -177,8 +180,14 @@ _direct_cache = {}   # st_id -> (url, expires_at)
 _direct_locks = {}
 
 
-async def direct_url(st_id):
+def forget_direct(st_id):
+    _direct_cache.pop(st_id, None)
+
+
+async def direct_url(st_id, fresh=False):
     """Real video file URL from Streamtape (ticket -> wait -> link). Cached for 30 minutes."""
+    if fresh:
+        forget_direct(st_id)
     hit = _direct_cache.get(st_id)
     if hit and hit[1] > time.time():
         return hit[0]
@@ -194,7 +203,8 @@ async def direct_url(st_id):
                 return None
             ticket = t["result"]["ticket"]
             wait = int(t["result"].get("wait_time") or 0)
-            await asyncio.sleep(min(wait, 20) + 1)
+            if wait:
+                await asyncio.sleep(min(wait, 20))
             d = await _api("/file/dl", file=st_id, ticket=ticket)
             if d.get("status") != 200 or not (d.get("result") or {}).get("url"):
                 logger.warning(f"[streamtape] dl failed for {st_id}: {d.get('msg') or d.get('status')}")
@@ -255,4 +265,5 @@ async def heal_loop():
         except Exception as e:
             logger.error(f"[streamtape] heal loop error: {e}")
         await asyncio.sleep(HEAL_INTERVAL_MIN * 60)
-      
+
+  
