@@ -31,8 +31,8 @@ async def _streamtape_push(msg, text, rows, file_id, file_name, mime_type, link)
         st_id = await streamtape.upload(file_id, file_name, mime_type)
         if st_id:
             note = (
-                f"\n\n<b>Streamtape:</b>\n{link}"
-                f"\n\n<b>App link (CastFlix):</b>\n{streamtape.video_link(file_id)}"
+                f"\n\n<b>Streamtape page:</b>\n{link}"
+                f"\n\n<b>Player link (paste in any video player / URL stream):</b>\n{streamtape.video_link(file_id, file_name)}"
             )
         else:
             note = f"\n\n<b>Streamtape:</b> <i>upload failed, the bot will retry automatically</i>\n{link}"
