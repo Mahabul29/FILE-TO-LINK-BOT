@@ -4,6 +4,7 @@ from config import PORT
 from web.video_play import video_play, stream_handler, download_handler
 from web.home import home_page
 from web.open_redirect import open_in_player
+from web.streamtape_redirect import stable_redirect, stable_info
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,6 +20,9 @@ async def web_server(bot_client):
     app.router.add_get("/stream/{file_id}/{filename:.*}", stream_handler)
     app.router.add_get("/dl/{file_id}", download_handler)
     app.router.add_get("/open/{player}/{file_id}", open_in_player)
+    app.router.add_get("/s/{file_id}", stable_redirect)
+    app.router.add_get("/se/{file_id}", stable_redirect)
+    app.router.add_get("/sinfo/{file_id}", stable_info)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -26,3 +30,4 @@ async def web_server(bot_client):
     await site.start()
     logger.info(f"✅ Web server started on port {PORT}")
     return runner
+    
