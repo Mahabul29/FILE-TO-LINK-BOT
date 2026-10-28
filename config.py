@@ -35,3 +35,16 @@ PLAYERS = {
     "playit":    {"package": "com.playit.videoplayer",     "label": "ᴘʟᴀʏɪᴛ"},
     "evaplayer": {"package": "com.evaplayer.app",         "label": "ᴇᴠᴀᴘʟᴀʏᴇʀ"},
 }
+
+# --- Streamtape (auto upload + auto restore) ---
+# Get both from Streamtape -> Account Settings -> API login / key
+STREAMTAPE_LOGIN = os.environ.get("STREAMTAPE_LOGIN", "")
+STREAMTAPE_KEY = os.environ.get("STREAMTAPE_KEY", "")
+# Optional Streamtape folder ID where the bot puts files
+STREAMTAPE_FOLDER = os.environ.get("STREAMTAPE_FOLDER", "")
+# How often (minutes) the bot checks that your Streamtape files still exist
+HEAL_INTERVAL_MIN = max(5, int(os.environ.get("HEAL_INTERVAL_MIN", "60")))
+# Give up on one upload after this many minutes
+UPLOAD_TIMEOUT_MIN = int(os.environ.get("UPLOAD_TIMEOUT_MIN", "120"))
+# How many files may upload to Streamtape at the same time
+UPLOAD_PARALLEL = max(1, int(os.environ.get("UPLOAD_PARALLEL", "2")))
