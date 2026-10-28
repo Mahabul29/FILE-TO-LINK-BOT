@@ -4,6 +4,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import BIN_CHANNEL, FQDN, PLAYERS
 from database.files_db import save_file
 from database.settings_db import get_active_player
+from utils import streamtape
 
 
 def build_clean_url(domain: str, path: str) -> str:
@@ -14,7 +15,7 @@ def build_clean_url(domain: str, path: str) -> str:
     return f"https://{clean_domain}/{path.lstrip('/')}"
 
 
-async def make_channel_buttons(file_id, is_video):
+async def make_channel_buttons(file_id, is_video, streamtape_link=None):
     download_link = build_clean_url(FQDN, f"dl/{file_id}")
 
     # Combine Download button and external player buttons into a single list
@@ -48,7 +49,18 @@ async def make_channel_buttons(file_id, is_video):
             )
         ])
 
+    if streamtape_link:
+        rows.append([InlineKeyboardButton("Streamtape", url=streamtape_link)])
+
     return InlineKeyboardMarkup(rows)
+
+
+async def _channel_streamtape_push(client, message, file_id, file_name, mime_type):
+    """Uploads to Streamtape in the background; the button is already on the post."""
+    try:
+        await streamtape.upload(file_id, file_name, mime_type)
+    except Exception as e:
+        print(f"❌ Streamtape upload error (channel): {e}")
 
 
 _MEDIA_FILTER = (
@@ -69,7 +81,7 @@ async def channel_file_handler(client, message):
             message.document or message.video or message.audio
             or message.photo or message.animation or message.video_note
         )
-        file_name = getattr(media, "file_name", "Unknown") if media else "Unknown"
+        file_name = (getattr(media, "file_name", None) if media else None) or "Unknown"
         file_size = getattr(media, "file_size", 0) or 0
         mime_type = getattr(media, "mime_type", "application/octet-stream") or "application/octet-stream"
 
@@ -82,7 +94,9 @@ async def channel_file_handler(client, message):
         )
 
         is_video = bool(message.video) or "video" in mime_type
-        markup = await make_channel_buttons(copied.id, is_video)
+        wants_st = streamtape.enabled and bool(message.document or message.video or message.audio)
+        st_link = streamtape.stable_link(copied.id) if wants_st else None
+        markup = await make_channel_buttons(copied.id, is_video, st_link)
 
         await asyncio.sleep(1)
 
@@ -94,6 +108,12 @@ async def channel_file_handler(client, message):
 
         print(f"✅ Buttons added to Channel Post: {message.id}")
 
+        if wants_st:
+            st_name = None if file_name == "Unknown" else file_name
+            asyncio.create_task(
+                _channel_streamtape_push(client, message, copied.id, st_name, mime_type)
+            )
+
     except Exception as e:
         print(f"❌ Error in Channel {message.chat.id}: {e}")
 
@@ -102,4 +122,4 @@ async def channel_file_handler(client, message):
 async def channel_edit_handler(client, message):
     if not message.reply_markup:
         await channel_file_handler(client, message)
-        
+
