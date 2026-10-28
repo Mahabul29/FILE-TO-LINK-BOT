@@ -4,7 +4,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import BIN_CHANNEL, FQDN, PLAYERS
 from database.files_db import save_file
 from database.settings_db import get_active_player
-from utils import streamtape
+from utils import streamtape, doodstream
 
 
 async def build_player_buttons(base_url, file_id):
@@ -25,24 +25,46 @@ async def build_player_buttons(base_url, file_id):
     return rows
 
 
-async def _streamtape_push(msg, text, rows, file_id, file_name, mime_type, link):
-    """Uploads to Streamtape in the background, then updates the bot's reply."""
-    try:
-        st_id = await streamtape.upload(file_id, file_name, mime_type)
-        if st_id:
-            note = (
-                f"\n\n<b>Streamtape page:</b>\n{link}"
-                f"\n\n<b>Player link (paste in any video player / URL stream):</b>\n{streamtape.video_link(file_id, file_name)}"
-            )
-        else:
-            note = f"\n\n<b>Streamtape:</b> <i>upload failed, the bot will retry automatically</i>\n{link}"
-        await msg.edit_text(
-            text + note,
-            reply_markup=InlineKeyboardMarkup(rows),
-            disable_web_page_preview=True
+def _host_note(label, mod, file_id, file_name, page_link, state):
+    """state: None = uploading, True = done, False = failed."""
+    if state is None:
+        return f"\n\n<b>{label}:</b> ⏳ <i>uploading...</i>\n{page_link}"
+    if state:
+        return (
+            f"\n\n<b>{label} page:</b>\n{page_link}"
+            f"\n\n<b>{label} player link (paste in any video player / URL stream):</b>\n{mod.video_link(file_id, file_name)}"
         )
-    except Exception as e:
-        print(f"Streamtape push error: {e}")
+    return f"\n\n<b>{label}:</b> <i>upload failed, the bot will retry automatically</i>\n{page_link}"
+
+
+async def _hosts_push(msg, text, rows, file_id, file_name, mime_type, links):
+    """Uploads to Streamtape / DoodStream in the background and updates the bot's reply as each finishes."""
+    hosts = []
+    if links.get("st"):
+        hosts.append(("Streamtape", streamtape, links["st"]))
+    if links.get("dd"):
+        hosts.append(("DoodStream", doodstream, links["dd"]))
+    states = {label: None for label, _, _ in hosts}
+    edit_lock = asyncio.Lock()
+
+    async def refresh():
+        note = "".join(_host_note(l, m, file_id, file_name, link, states[l]) for l, m, link in hosts)
+        async with edit_lock:
+            try:
+                await msg.edit_text(text + note, reply_markup=InlineKeyboardMarkup(rows),
+                                    disable_web_page_preview=True)
+            except Exception as e:
+                print(f"Link message edit error: {e}")
+
+    async def one(label, mod):
+        try:
+            states[label] = bool(await mod.upload(file_id, file_name, mime_type))
+        except Exception as e:
+            print(f"{label} push error: {e}")
+            states[label] = False
+        await refresh()
+
+    await asyncio.gather(*(one(l, m) for l, m, _ in hosts))
 
 
 @Client.on_message(filters.private & (filters.document | filters.video | filters.audio))
@@ -110,18 +132,26 @@ async def link_generator_handler(client, message):
             st_link = streamtape.stable_link(copied_msg.id)
             buttons.append([InlineKeyboardButton("Streamtape", url=st_link)])
 
+        dd_link = None
+        if doodstream.enabled:
+            dd_link = doodstream.stable_link(copied_msg.id)
+            buttons.append([InlineKeyboardButton("DoodStream", url=dd_link)])
+
         keyboard = InlineKeyboardMarkup(buttons)
 
         await msg.edit_text(
-            text + (f"\n\n<b>Streamtape:</b> ⏳ <i>uploading...</i>\n{st_link}" if st_link else ""),
+            text
+            + (_host_note("Streamtape", streamtape, copied_msg.id, None, st_link, None) if st_link else "")
+            + (_host_note("DoodStream", doodstream, copied_msg.id, None, dd_link, None) if dd_link else ""),
             reply_markup=keyboard,
             disable_web_page_preview=True
         )
 
-        if st_link:
+        if st_link or dd_link:
             st_name = None if file_name == "Unknown File" else file_name
             asyncio.create_task(
-                _streamtape_push(msg, text, buttons, copied_msg.id, st_name, mime_type, st_link)
+                _hosts_push(msg, text, buttons, copied_msg.id, st_name, mime_type,
+                            {"st": st_link, "dd": dd_link})
             )
 
     except Exception as e:
