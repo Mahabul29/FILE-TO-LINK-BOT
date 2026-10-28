@@ -24,6 +24,7 @@ async def web_server(bot_client):
     app.router.add_get("/se/{file_id}", stable_redirect)
     app.router.add_get("/sinfo/{file_id}", stable_info)
     app.router.add_get("/sv/{file_id}", stable_video)
+    app.router.add_get("/sv/{file_id}/{filename:.*}", stable_video)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -31,4 +32,4 @@ async def web_server(bot_client):
     await site.start()
     logger.info(f"✅ Web server started on port {PORT}")
     return runner
-  
+
