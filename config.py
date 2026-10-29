@@ -55,7 +55,14 @@ DOODSTREAM_KEY = os.environ.get("DOODSTREAM_KEY", "")
 # Domain used for DoodStream page/embed links (DoodStream changes domains often)
 DOODSTREAM_DOMAIN = os.environ.get("DOODSTREAM_DOMAIN", "doodstream.com").strip().replace("https://", "").strip("/")
 
-# How /sv/<id> and /dv/<id> (the direct-video link for apps) serves the Streamtape file:
+# --- Mixdrop (auto upload + auto restore) ---
+# Mixdrop -> Account -> API: your account e-mail and API key
+MIXDROP_EMAIL = os.environ.get("MIXDROP_EMAIL", "").strip()
+MIXDROP_KEY = os.environ.get("MIXDROP_KEY", "").strip()
+# Domain used for Mixdrop page/embed links (Mixdrop changes domains sometimes)
+MIXDROP_DOMAIN = os.environ.get("MIXDROP_DOMAIN", "mixdrop.ag").strip().replace("https://", "").strip("/")
+
+# How /sv/<id>, /dv/<id> and /mv/<id> (the direct-video link for apps) serves the Streamtape file:
 #   redirect = send the app straight to Streamtape's video URL (no bot bandwidth)
 #   proxy    = the bot streams it through itself (use this if redirect does not play)
 STREAM_MODE = os.environ.get("STREAM_MODE", "proxy").lower()
