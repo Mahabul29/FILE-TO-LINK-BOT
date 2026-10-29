@@ -100,34 +100,11 @@ async def link_generator_handler(client, message):
         text = (
             "<b>𝗬𝗼𝘂𝗿 𝗟𝗶𝗻𝗸 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 🌿</b>\n\n"
             f"<b>𝙵𝚒𝚕𝚎 𝙽𝚊𝚖𝚎:</b> <code>{file_name}</code>\n\n"
-            f"<b>𝙵𝚒𝚕𝚎 𝚂𝚒𝚣𝚎:</b> <code>{size_mb} MB</code>\n\n"
-            f"<b>𝙳𝚘𝚠𝚗𝚕𝚘𝚍:</b>\n{download_link}"
+            f"<b>𝙵𝚒𝚕𝚎 𝚂𝚒𝚣𝚎:</b> <code>{size_mb} MB</code>"
         )
 
-        buttons = [
-            [
-                InlineKeyboardButton("𝗗𝗼𝘄𝗻𝗹𝗼𝗱", url=download_link),
-                InlineKeyboardButton("𝗦𝘁𝗿𝗲𝗮𝗺", url=stream_link)
-            ]
-        ]
-
-        # Enhanced video detection (handles .mkv, .mp4, and video documents)
-        video_exts = ('.mkv', '.mp4', '.avi', '.mov', '.flv', '.wmv', '.m4v', '.webm', '.3gp')
-        is_video = (
-            message.video is not None 
-            or "video" in mime_type.lower() 
-            or file_name.lower().endswith(video_exts)
-        )
-
-        if is_video:
-            buttons.append([
-                InlineKeyboardButton(
-                    "Download From EvaPLAYER",
-                    url=f"https://{base_url}/open/evaplayer/{copied_msg.id}?action=download"
-                )
-            ])
-            player_rows = await build_player_buttons(base_url, copied_msg.id)
-            buttons.extend(player_rows)
+        # Only the server buttons are shown (Streamtape / DoodStream / Mixdrop, see /active)
+        buttons = []
 
         st_link = None
         if await hosts.is_on("streamtape"):
@@ -144,7 +121,14 @@ async def link_generator_handler(client, message):
             mx_link = mixdrop.stable_link(copied_msg.id)
             buttons.append([InlineKeyboardButton("Mixdrop", url=mx_link)])
 
-        keyboard = InlineKeyboardMarkup(buttons)
+        keyboard = InlineKeyboardMarkup(buttons) if buttons else None
+
+        if not buttons:
+            await msg.edit_text(
+                text + "\n\n⚠️ <i>No upload server is ON. Use /active to turn one on.</i>",
+                disable_web_page_preview=True
+            )
+            return
 
         await msg.edit_text(
             text
