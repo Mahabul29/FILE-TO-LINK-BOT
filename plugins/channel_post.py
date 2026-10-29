@@ -16,38 +16,8 @@ def build_clean_url(domain: str, path: str) -> str:
 
 
 async def make_channel_buttons(file_id, is_video, streamtape_link=None, dood_link=None, mix_link=None):
-    download_link = build_clean_url(FQDN, f"dl/{file_id}")
-
-    # Combine Download button and external player buttons into a single list
-    all_buttons = [
-        InlineKeyboardButton("ᴅᴏᴡɴʟᴏᴅ", url=download_link)
-    ]
-
-    if is_video:
-        active_player = await get_active_player()
-        keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
-        keys = [k for k in keys if k in PLAYERS]
-
-        for k in keys:
-            all_buttons.append(
-                InlineKeyboardButton(
-                    PLAYERS[k]["label"],
-                    url=build_clean_url(FQDN, f"open/{k}/{file_id}")
-                )
-            )
-
-    # Format all buttons into 2 per row (e.g. [DOWNLOAD] [PLAYIT])
+    # Only the server buttons are shown (Streamtape / DoodStream / Mixdrop, see /active)
     rows = []
-    for i in range(0, len(all_buttons), 2):
-        rows.append(all_buttons[i:i + 2])
-
-    if is_video:
-        rows.append([
-            InlineKeyboardButton(
-                "Download From EvaPLAYER",
-                url=build_clean_url(FQDN, f"open/evaplayer/{file_id}?action=download")
-            )
-        ])
 
     if streamtape_link:
         rows.append([InlineKeyboardButton("Streamtape", url=streamtape_link)])
@@ -58,7 +28,7 @@ async def make_channel_buttons(file_id, is_video, streamtape_link=None, dood_lin
     if mix_link:
         rows.append([InlineKeyboardButton("Mixdrop", url=mix_link)])
 
-    return InlineKeyboardMarkup(rows)
+    return InlineKeyboardMarkup(rows) if rows else None
 
 
 async def _channel_mix_push(client, message, file_id, file_name, mime_type):
@@ -124,11 +94,12 @@ async def channel_file_handler(client, message):
 
         await asyncio.sleep(1)
 
-        await client.edit_message_reply_markup(
-            chat_id=message.chat.id,
-            message_id=message.id,
-            reply_markup=markup
-        )
+        if markup:
+            await client.edit_message_reply_markup(
+                chat_id=message.chat.id,
+                message_id=message.id,
+                reply_markup=markup
+            )
 
         print(f"✅ Buttons added to Channel Post: {message.id}")
 
