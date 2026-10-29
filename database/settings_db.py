@@ -43,3 +43,28 @@ async def set_active_player(player_key: str) -> None:
 async def clear_active_player() -> None:
     await set_active_player(_DEFAULT)
     
+
+
+_HOSTS_DOC = "host_settings"
+
+
+async def get_active_hosts():
+    """List of active upload servers (e.g. ["doodstream", "mixdrop"]), or None = every configured server."""
+    if settings_col is None:
+        return None
+    doc = await settings_col.find_one({"_id": _HOSTS_DOC})
+    if not doc or doc.get("active_hosts") is None:
+        return None
+    return list(doc["active_hosts"])
+
+
+async def set_active_hosts(hosts) -> None:
+    """hosts: list of server names, [] = none, None = every configured server."""
+    if settings_col is None:
+        return
+    await settings_col.update_one(
+        {"_id": _HOSTS_DOC},
+        {"$set": {"active_hosts": None if hosts is None else list(hosts)}},
+        upsert=True,
+    )
+    
