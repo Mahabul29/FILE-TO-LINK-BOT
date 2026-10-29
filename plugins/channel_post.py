@@ -4,7 +4,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import BIN_CHANNEL, FQDN, PLAYERS
 from database.files_db import save_file
 from database.settings_db import get_active_player
-from utils import streamtape, doodstream
+from utils import streamtape, doodstream, mixdrop, hosts
 
 
 def build_clean_url(domain: str, path: str) -> str:
@@ -15,7 +15,7 @@ def build_clean_url(domain: str, path: str) -> str:
     return f"https://{clean_domain}/{path.lstrip('/')}"
 
 
-async def make_channel_buttons(file_id, is_video, streamtape_link=None, dood_link=None):
+async def make_channel_buttons(file_id, is_video, streamtape_link=None, dood_link=None, mix_link=None):
     download_link = build_clean_url(FQDN, f"dl/{file_id}")
 
     # Combine Download button and external player buttons into a single list
@@ -55,7 +55,17 @@ async def make_channel_buttons(file_id, is_video, streamtape_link=None, dood_lin
     if dood_link:
         rows.append([InlineKeyboardButton("DoodStream", url=dood_link)])
 
+    if mix_link:
+        rows.append([InlineKeyboardButton("Mixdrop", url=mix_link)])
+
     return InlineKeyboardMarkup(rows)
+
+
+async def _channel_mix_push(client, message, file_id, file_name, mime_type):
+    try:
+        await mixdrop.upload(file_id, file_name, mime_type)
+    except Exception as e:
+        print(f"❌ Mixdrop upload error (channel): {e}")
 
 
 async def _channel_dood_push(client, message, file_id, file_name, mime_type):
@@ -104,11 +114,13 @@ async def channel_file_handler(client, message):
         )
 
         is_video = bool(message.video) or "video" in mime_type
-        wants_st = streamtape.enabled and bool(message.document or message.video or message.audio)
+        wants_st = await hosts.is_on("streamtape") and bool(message.document or message.video or message.audio)
         st_link = streamtape.stable_link(copied.id) if wants_st else None
-        wants_dd = doodstream.enabled and bool(message.document or message.video or message.audio)
+        wants_dd = await hosts.is_on("doodstream") and bool(message.document or message.video or message.audio)
         dd_link = doodstream.stable_link(copied.id) if wants_dd else None
-        markup = await make_channel_buttons(copied.id, is_video, st_link, dd_link)
+        wants_mx = await hosts.is_on("mixdrop") and bool(message.document or message.video or message.audio)
+        mx_link = mixdrop.stable_link(copied.id) if wants_mx else None
+        markup = await make_channel_buttons(copied.id, is_video, st_link, dd_link, mx_link)
 
         await asyncio.sleep(1)
 
@@ -130,6 +142,12 @@ async def channel_file_handler(client, message):
             dd_name = None if file_name == "Unknown" else file_name
             asyncio.create_task(
                 _channel_dood_push(client, message, copied.id, dd_name, mime_type)
+            )
+
+        if wants_mx:
+            mx_name = None if file_name == "Unknown" else file_name
+            asyncio.create_task(
+                _channel_mix_push(client, message, copied.id, mx_name, mime_type)
             )
 
     except Exception as e:
