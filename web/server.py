@@ -4,6 +4,8 @@ from config import PORT
 from web.video_play import video_play, stream_handler, download_handler
 from web.home import home_page
 from web.open_redirect import open_in_player
+from web.doodstream_redirect import dood_redirect, dood_info, dood_video
+from web.mixdrop_redirect import mix_redirect, mix_info, mix_video
 from web.streamtape_redirect import stable_redirect, stable_info, stable_video
 
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +27,16 @@ async def web_server(bot_client):
     app.router.add_get("/sinfo/{file_id}", stable_info)
     app.router.add_get("/sv/{file_id}", stable_video)
     app.router.add_get("/sv/{file_id}/{filename:.*}", stable_video)
+    app.router.add_get("/d/{file_id}", dood_redirect)
+    app.router.add_get("/de/{file_id}", dood_redirect)
+    app.router.add_get("/dinfo/{file_id}", dood_info)
+    app.router.add_get("/dv/{file_id}", dood_video)
+    app.router.add_get("/dv/{file_id}/{filename:.*}", dood_video)
+    app.router.add_get("/m/{file_id}", mix_redirect)
+    app.router.add_get("/me/{file_id}", mix_redirect)
+    app.router.add_get("/minfo/{file_id}", mix_info)
+    app.router.add_get("/mv/{file_id}", mix_video)
+    app.router.add_get("/mv/{file_id}/{filename:.*}", mix_video)
 
     runner = web.AppRunner(app)
     await runner.setup()
