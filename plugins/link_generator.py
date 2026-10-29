@@ -4,7 +4,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import BIN_CHANNEL, FQDN, PLAYERS
 from database.files_db import save_file
 from database.settings_db import get_active_player
-from utils import streamtape, doodstream
+from utils import streamtape, doodstream, mixdrop, hosts
 
 
 async def build_player_buttons(base_url, file_id):
@@ -44,6 +44,8 @@ async def _hosts_push(msg, text, rows, file_id, file_name, mime_type, links):
         hosts.append(("Streamtape", streamtape, links["st"]))
     if links.get("dd"):
         hosts.append(("DoodStream", doodstream, links["dd"]))
+    if links.get("mx"):
+        hosts.append(("Mixdrop", mixdrop, links["mx"]))
     states = {label: None for label, _, _ in hosts}
     edit_lock = asyncio.Lock()
 
@@ -128,30 +130,36 @@ async def link_generator_handler(client, message):
             buttons.extend(player_rows)
 
         st_link = None
-        if streamtape.enabled:
+        if await hosts.is_on("streamtape"):
             st_link = streamtape.stable_link(copied_msg.id)
             buttons.append([InlineKeyboardButton("Streamtape", url=st_link)])
 
         dd_link = None
-        if doodstream.enabled:
+        if await hosts.is_on("doodstream"):
             dd_link = doodstream.stable_link(copied_msg.id)
             buttons.append([InlineKeyboardButton("DoodStream", url=dd_link)])
+
+        mx_link = None
+        if await hosts.is_on("mixdrop"):
+            mx_link = mixdrop.stable_link(copied_msg.id)
+            buttons.append([InlineKeyboardButton("Mixdrop", url=mx_link)])
 
         keyboard = InlineKeyboardMarkup(buttons)
 
         await msg.edit_text(
             text
             + (_host_note("Streamtape", streamtape, copied_msg.id, None, st_link, None) if st_link else "")
-            + (_host_note("DoodStream", doodstream, copied_msg.id, None, dd_link, None) if dd_link else ""),
+            + (_host_note("DoodStream", doodstream, copied_msg.id, None, dd_link, None) if dd_link else "")
+            + (_host_note("Mixdrop", mixdrop, copied_msg.id, None, mx_link, None) if mx_link else ""),
             reply_markup=keyboard,
             disable_web_page_preview=True
         )
 
-        if st_link or dd_link:
+        if st_link or dd_link or mx_link:
             st_name = None if file_name == "Unknown File" else file_name
             asyncio.create_task(
                 _hosts_push(msg, text, buttons, copied_msg.id, st_name, mime_type,
-                            {"st": st_link, "dd": dd_link})
+                            {"st": st_link, "dd": dd_link, "mx": mx_link})
             )
 
     except Exception as e:
