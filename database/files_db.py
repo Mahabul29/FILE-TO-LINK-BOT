@@ -22,6 +22,15 @@ async def save_file(file_id, file_name, file_size, mime_type, uploader_id):
     )
 
 
+async def set_links(file_id, host, page_link, player_link):
+    """Stores the 2 bot links of one server (page + player) on the file's record: links.<host>."""
+    await files_col.update_one(
+        {"file_id": int(file_id)},
+        {"$set": {f"links.{host}": {"page": page_link, "player": player_link}}},
+        upsert=True,
+    )
+
+
 async def get_all_files(limit=300):
     cursor = files_col.find({}).sort("upload_date", -1).limit(limit)
     return await cursor.to_list(length=limit)
@@ -29,3 +38,4 @@ async def get_all_files(limit=300):
 
 async def total_files_count():
     return await files_col.count_documents({})
+    
