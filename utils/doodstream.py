@@ -23,6 +23,7 @@ from config import (
     FQDN, DOODSTREAM_KEY, DOODSTREAM_DOMAIN,
     HEAL_INTERVAL_MIN, UPLOAD_TIMEOUT_MIN, UPLOAD_PARALLEL,
 )
+from database import files_db
 from database import doodstream_db as db
 
 logger = logging.getLogger(__name__)
@@ -152,7 +153,12 @@ async def upload(file_id, name, mime=None, healing=False):
     async with lock:
         rec = await db.get(file_id)
         name = (rec or {}).get("name") or make_name(name, mime, file_id)
-        await db.upsert(file_id, name=name, status="uploading")
+        page_link, player_link = stable_link(file_id), video_link(file_id, name)
+        await db.upsert(file_id, name=name, status="uploading", page_link=page_link, player_link=player_link)
+        try:
+            await files_db.set_links(file_id, "doodstream", page_link, player_link)
+        except Exception as e:
+            logger.warning(f"[doodstream] could not store links on the file record: {e}")
         async with _upload_sem:
             try:
                 new_id = await _remote_upload(file_id, name)
