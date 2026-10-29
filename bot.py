@@ -3,7 +3,7 @@ import logging
 from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN, BIN_CHANNEL
 from web.server import web_server
-from utils import streamtape, doodstream
+from utils import streamtape, doodstream, mixdrop
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,11 +44,20 @@ class Bot(Client):
         else:
             print("ℹ️ DoodStream disabled (set DOODSTREAM_KEY to enable)")
 
+        self.mix_task = None
+        if mixdrop.enabled:
+            self.mix_task = asyncio.create_task(mixdrop.heal_loop())
+            print("✅ Mixdrop auto-restore started")
+        else:
+            print("ℹ️ Mixdrop disabled (set MIXDROP_EMAIL and MIXDROP_KEY to enable)")
+
     async def stop(self, *args):
         if getattr(self, "heal_task", None):
             self.heal_task.cancel()
         if getattr(self, "dood_task", None):
             self.dood_task.cancel()
+        if getattr(self, "mix_task", None):
+            self.mix_task.cancel()
         await super().stop()
         await self.runner.cleanup()
         print("🛑 Bot Stopped")
