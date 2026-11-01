@@ -100,13 +100,27 @@ async def _open_upstream(session, st_id, range_header):
     return None
 
 
+_session = None
+
+
+def _get_session():
+    """One shared connection pool: no new TLS handshake for every seek / range request (less lag)."""
+    global _session
+    if _session is None or _session.closed:
+        _session = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=0, ttl_dns_cache=300, keepalive_timeout=75, enable_cleanup_closed=True),
+            timeout=aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60),
+        )
+    return _session
+
+
 async def _proxy(request, st_id, name):
     """Streams the Streamtape file through the bot (supports seeking). Returns None if Streamtape fails."""
-    session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60))
+    session = _get_session()
+    up = None
     try:
         up = await _open_upstream(session, st_id, request.headers.get("Range"))
         if up is None:
-            await session.close()
             return None
         out_headers = {
             "Accept-Ranges": "bytes",
@@ -120,15 +134,17 @@ async def _proxy(request, st_id, name):
         resp = web.StreamResponse(status=up.status, headers=out_headers)
         await resp.prepare(request)
         if request.method != "HEAD":
-            async for chunk in up.content.iter_chunked(256 * 1024):
+            async for chunk in up.content.iter_chunked(512 * 1024):
                 await resp.write(chunk)
         await resp.write_eof()
-        up.release()
+        up.release()   # fully read: connection goes back to the pool
+        up = None
         return resp
     except (ConnectionResetError, asyncio.CancelledError):
         return web.Response(status=499)
     finally:
-        await session.close()
+        if up is not None:
+            up.close()  # player seeked / left: stop pulling data from Streamtape right away
 
 
 async def stable_video(request):
@@ -141,6 +157,11 @@ async def stable_video(request):
     rec, state = await _resolve(file_id)
     if state == "missing":
         return web.Response(text="❌ File not found", status=404)
+
+    # A normal web browser opening /sv/ gets Streamtape's player (with ads), exactly like /s/.
+    # Video players / apps (ExoPlayer, VLC, MX...) still get the real video file below.
+    if state == "ok" and _is_browser(request):
+        raise web.HTTPFound(streamtape.streamtape_url(rec["st_id"], rec.get("name")))
 
     if state == "ok":
         # Streamtape's direct links are locked to the IP that asked for them (this server),
@@ -156,4 +177,4 @@ async def stable_video(request):
 
     # restoring / Streamtape problem -> play from the Telegram copy
     raise web.HTTPFound(f"/stream/{file_id}")
-    
+
