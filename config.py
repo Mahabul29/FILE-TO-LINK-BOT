@@ -45,10 +45,10 @@ PLAYERS = {
 
 # --- Streamtape (auto upload + auto restore) ---
 # Get both from Streamtape -> Account Settings -> API login / key
-STREAMTAPE_LOGIN = os.environ.get("STREAMTAPE_LOGIN", "")
-STREAMTAPE_KEY = os.environ.get("STREAMTAPE_KEY", "")
+STREAMTAPE_LOGIN = os.environ.get("STREAMTAPE_LOGIN", "").strip()
+STREAMTAPE_KEY = os.environ.get("STREAMTAPE_KEY", "").strip()
 # Optional Streamtape folder ID where the bot puts files
-STREAMTAPE_FOLDER = os.environ.get("STREAMTAPE_FOLDER", "")
+STREAMTAPE_FOLDER = os.environ.get("STREAMTAPE_FOLDER", "").strip()
 # How often (minutes) the bot checks that your Streamtape files still exist
 HEAL_INTERVAL_MIN = max(5, int(os.environ.get("HEAL_INTERVAL_MIN", "60")))
 # Give up on one upload after this many minutes
@@ -58,7 +58,7 @@ UPLOAD_PARALLEL = max(1, int(os.environ.get("UPLOAD_PARALLEL", "2")))
 
 # --- DoodStream (auto upload + auto restore) ---
 # Get the API key from DoodStream -> Account Settings -> API
-DOODSTREAM_KEY = os.environ.get("DOODSTREAM_KEY", "")
+DOODSTREAM_KEY = os.environ.get("DOODSTREAM_KEY", "").strip()
 # Domain used for DoodStream page/embed links (DoodStream changes domains often)
 DOODSTREAM_DOMAIN = os.environ.get("DOODSTREAM_DOMAIN", "doodstream.com").strip().replace("https://", "").strip("/")
 
