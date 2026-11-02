@@ -27,6 +27,13 @@ PORT = int(os.environ.get("PORT", "8080"))
 FQDN = os.environ.get("FQDN", "filetolink-8klbbde4.b4a.run")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
 
+# Domain written into links people see (/s/, /sv/, /d/, /m/, /watch/, /dl/).
+# FQDN stays the address that Streamtape/DoodStream/Mixdrop download from when uploading
+# (it must point at THIS server). If PUBLIC_FQDN is empty, links use FQDN as before.
+PUBLIC_FQDN = os.environ.get("PUBLIC_FQDN", "").strip() or FQDN
+# Set HEAL_ENABLED=false on a server that should NOT auto re-upload deleted files.
+HEAL_ENABLED = os.environ.get("HEAL_ENABLED", "true").strip().lower() not in ("false", "0", "no")
+
 # --- External Players Configuration ---
 PLAYERS = {
     "vlc":       {"package": "org.videolan.vlc",           "label": "ᴠʟᴄ ᴘʟᴀʏᴇʀ"},
