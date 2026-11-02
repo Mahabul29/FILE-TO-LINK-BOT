@@ -18,7 +18,7 @@ from urllib.parse import quote
 import aiohttp
 
 from config import (
-    FQDN, STREAMTAPE_LOGIN, STREAMTAPE_KEY, STREAMTAPE_FOLDER,
+    FQDN, PUBLIC_FQDN, STREAMTAPE_LOGIN, STREAMTAPE_KEY, STREAMTAPE_FOLDER,
     HEAL_INTERVAL_MIN, UPLOAD_TIMEOUT_MIN, UPLOAD_PARALLEL,
 )
 from database import files_db
@@ -39,12 +39,17 @@ def _base():
     return FQDN.replace("https://", "").replace("http://", "").strip().strip("/")
 
 
+def _public():
+    """Domain shown in links given to people."""
+    return PUBLIC_FQDN.replace("https://", "").replace("http://", "").strip().strip("/")
+
+
 def dl_link(file_id):
     return f"https://{_base()}/dl/{file_id}"
 
 
 def stable_link(file_id, embed=False):
-    return f"https://{_base()}/{'se' if embed else 's'}/{file_id}"
+    return f"https://{_public()}/{'se' if embed else 's'}/{file_id}"
 
 
 def video_link(file_id, name=None):
@@ -52,7 +57,7 @@ def video_link(file_id, name=None):
     n = (name or "video.mp4").replace("/", "_")
     if "." not in n[-6:]:
         n += ".mp4"
-    return f"https://{_base()}/sv/{file_id}/{quote(n)}"
+    return f"https://{_public()}/sv/{file_id}/{quote(n)}"
 
 
 def streamtape_url(st_id, name, embed=False):
@@ -272,4 +277,4 @@ async def heal_loop():
             logger.error(f"[streamtape] heal loop error: {e}")
         await asyncio.sleep(HEAL_INTERVAL_MIN * 60)
 
-  
+
