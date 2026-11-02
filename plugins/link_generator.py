@@ -1,7 +1,7 @@
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import BIN_CHANNEL, FQDN, PLAYERS
+from config import BIN_CHANNEL, FQDN, PUBLIC_FQDN, PLAYERS
 from database.files_db import save_file
 from database.settings_db import get_active_player
 from utils import streamtape, doodstream, mixdrop, hosts
@@ -74,7 +74,7 @@ async def link_generator_handler(client, message):
     msg = await message.reply_text("<code>Processing...</code>")
 
     try:
-        base_url = FQDN.replace("https://", "").replace("http://", "").strip("/")
+        base_url = PUBLIC_FQDN.replace("https://", "").replace("http://", "").strip("/")
 
         copied_msg = await message.copy(chat_id=BIN_CHANNEL)
 
