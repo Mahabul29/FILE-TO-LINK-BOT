@@ -1,7 +1,7 @@
 import logging
 import urllib.parse
 from aiohttp import web
-from config import BIN_CHANNEL, FQDN, PLAYERS
+from config import BIN_CHANNEL, FQDN, PUBLIC_FQDN, PLAYERS
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ async def open_in_player(request):
     # Title shown inside the player — kept human-readable
     safe_name_for_title = _intent_safe(file_name)
 
-    clean_fqdn = FQDN.replace("https://", "").replace("http://", "").strip().rstrip("/")
+    clean_fqdn = PUBLIC_FQDN.replace("https://", "").replace("http://", "").strip().rstrip("/")
     if not clean_fqdn or clean_fqdn == "localhost":
         clean_fqdn = "example.com"
 
@@ -94,4 +94,5 @@ async def open_in_player(request):
 </body>
 </html>"""
     return web.Response(text=html, content_type="text/html", charset="utf-8")
+
     
