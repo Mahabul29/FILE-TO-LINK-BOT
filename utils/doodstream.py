@@ -20,7 +20,7 @@ from urllib.parse import quote, urlparse
 import aiohttp
 
 from config import (
-    FQDN, DOODSTREAM_KEY, DOODSTREAM_DOMAIN,
+    FQDN, PUBLIC_FQDN, DOODSTREAM_KEY, DOODSTREAM_DOMAIN,
     HEAL_INTERVAL_MIN, UPLOAD_TIMEOUT_MIN, UPLOAD_PARALLEL,
 )
 from database import files_db
@@ -42,12 +42,17 @@ def _base():
     return FQDN.replace("https://", "").replace("http://", "").strip().strip("/")
 
 
+def _public():
+    """Domain shown in links given to people."""
+    return PUBLIC_FQDN.replace("https://", "").replace("http://", "").strip().strip("/")
+
+
 def dl_link(file_id):
     return f"https://{_base()}/dl/{file_id}"
 
 
 def stable_link(file_id, embed=False):
-    return f"https://{_base()}/{'de' if embed else 'd'}/{file_id}"
+    return f"https://{_public()}/{'de' if embed else 'd'}/{file_id}"
 
 
 def video_link(file_id, name=None):
@@ -55,7 +60,7 @@ def video_link(file_id, name=None):
     n = (name or "video.mp4").replace("/", "_")
     if "." not in n[-6:]:
         n += ".mp4"
-    return f"https://{_base()}/dv/{file_id}/{quote(n)}"
+    return f"https://{_public()}/dv/{file_id}/{quote(n)}"
 
 
 def dood_url(code, embed=False):
@@ -278,4 +283,5 @@ async def heal_loop():
         except Exception as e:
             logger.error(f"[doodstream] heal loop error: {e}")
         await asyncio.sleep(HEAL_INTERVAL_MIN * 60)
-      
+
+  
