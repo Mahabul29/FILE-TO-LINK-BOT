@@ -1,72 +1,23 @@
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import BIN_CHANNEL, FQDN, PUBLIC_FQDN, PLAYERS
+from config import BIN_CHANNEL, FQDN
 from database.files_db import save_file
-from database.settings_db import get_active_player
-from utils import streamtape, doodstream, mixdrop, hosts
+from utils import streamtape
 
 
-async def build_player_buttons(base_url, file_id):
-    """
-    Returns a list of InlineKeyboardButton rows for external players,
-    respecting the active-player setting (2 buttons per row).
-    """
-    active_player = await get_active_player()
-    keys = list(PLAYERS.keys()) if active_player == "all" else [active_player]
-    keys = [k for k in keys if k in PLAYERS]
-
-    buttons = [
-        InlineKeyboardButton(PLAYERS[k]["label"], url=f"https://{base_url}/open/{k}/{file_id}")
-        for k in keys
-    ]
-
-    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
-    return rows
-
-
-def _host_note(label, mod, file_id, file_name, page_link, state):
+def _links_text(file_id, file_name, state):
     """state: None = uploading, True = done, False = failed."""
+    page = streamtape.stable_link(file_id)
     if state is None:
-        return f"\n\n<b>{label}:</b> ⏳ <i>uploading...</i>\n{page_link}"
+        return f"\n\n<b>Streamtape:</b> ⏳ <i>uploading...</i>\n{page}"
     if state:
         return (
-            f"\n\n<b>{label} page:</b>\n{page_link}"
-            f"\n\n<b>{label} player link (paste in any video player / URL stream):</b>\n{mod.video_link(file_id, file_name)}"
+            f"\n\n<b>Streamtape page:</b>\n{page}"
+            f"\n\n<b>Player link (paste in any video player / URL stream):</b>\n"
+            f"{streamtape.video_link(file_id, file_name)}"
         )
-    return f"\n\n<b>{label}:</b> <i>upload failed, the bot will retry automatically</i>\n{page_link}"
-
-
-async def _hosts_push(msg, text, rows, file_id, file_name, mime_type, links):
-    """Uploads to Streamtape / DoodStream in the background and updates the bot's reply as each finishes."""
-    hosts = []
-    if links.get("st"):
-        hosts.append(("Streamtape", streamtape, links["st"]))
-    if links.get("dd"):
-        hosts.append(("DoodStream", doodstream, links["dd"]))
-    if links.get("mx"):
-        hosts.append(("Mixdrop", mixdrop, links["mx"]))
-    states = {label: None for label, _, _ in hosts}
-    edit_lock = asyncio.Lock()
-
-    async def refresh():
-        note = "".join(_host_note(l, m, file_id, file_name, link, states[l]) for l, m, link in hosts)
-        async with edit_lock:
-            try:
-                await msg.edit_text(text + note, reply_markup=InlineKeyboardMarkup(rows),
-                                    disable_web_page_preview=True)
-            except Exception as e:
-                print(f"Link message edit error: {e}")
-
-    async def one(label, mod):
-        try:
-            states[label] = bool(await mod.upload(file_id, file_name, mime_type))
-        except Exception as e:
-            print(f"{label} push error: {e}")
-            states[label] = False
-        await refresh()
-
-    await asyncio.gather(*(one(l, m) for l, m, _ in hosts))
+    return f"\n\n<b>Streamtape:</b> <i>upload failed, the bot will retry automatically</i>\n{page}"
 
 
 @Client.on_message(filters.private & (filters.document | filters.video | filters.audio))
@@ -74,12 +25,20 @@ async def link_generator_handler(client, message):
     msg = await message.reply_text("<code>Processing...</code>")
 
     try:
-        base_url = PUBLIC_FQDN.replace("https://", "").replace("http://", "").strip("/")
+        if not streamtape.enabled:
+            await msg.edit_text(
+                "<b>Error:</b> <code>STREAMTAPE_LOGIN and STREAMTAPE_KEY are not set "
+                "in the Environment tab.</code>"
+            )
+            return
+        if not FQDN:
+            await msg.edit_text(
+                "<b>Error:</b> <code>FQDN is not set. Add your bot-hosting.net domain "
+                "in the Environment tab.</code>"
+            )
+            return
 
         copied_msg = await message.copy(chat_id=BIN_CHANNEL)
-
-        download_link = f"https://{base_url}/dl/{copied_msg.id}"
-        stream_link = f"https://{base_url}/watch/{copied_msg.id}"
 
         media = message.document or message.video or message.audio
         file_name = getattr(media, "file_name", None) or "Unknown File"
@@ -87,7 +46,6 @@ async def link_generator_handler(client, message):
         mime_type = getattr(media, "mime_type", "application/octet-stream") or "application/octet-stream"
         size_mb = round(file_size / (1024 * 1024), 2)
 
-        # Save record so it shows up on the /files web page
         await save_file(
             file_id=copied_msg.id,
             file_name=file_name,
@@ -96,56 +54,37 @@ async def link_generator_handler(client, message):
             uploader_id=message.from_user.id
         )
 
-        # Clean standard text (fixes encoding corruption/glitch in message text)
         text = (
             "<b>𝗬𝗼𝘂𝗿 𝗟𝗶𝗻𝗸 𝗚𝗲𝗻𝗲𝗿𝗮𝘁𝗲𝗱 🌿</b>\n\n"
             f"<b>𝙵𝚒𝚕𝚎 𝙽𝚊𝚖𝚎:</b> <code>{file_name}</code>\n\n"
             f"<b>𝙵𝚒𝚕𝚎 𝚂𝚒𝚣𝚎:</b> <code>{size_mb} MB</code>"
         )
-
-        # Only the server buttons are shown (Streamtape / DoodStream / Mixdrop, see /active)
-        buttons = []
-
-        st_link = None
-        if await hosts.is_on("streamtape"):
-            st_link = streamtape.stable_link(copied_msg.id)
-            buttons.append([InlineKeyboardButton("Streamtape", url=st_link)])
-
-        dd_link = None
-        if await hosts.is_on("doodstream"):
-            dd_link = doodstream.stable_link(copied_msg.id)
-            buttons.append([InlineKeyboardButton("DoodStream", url=dd_link)])
-
-        mx_link = None
-        if await hosts.is_on("mixdrop"):
-            mx_link = mixdrop.stable_link(copied_msg.id)
-            buttons.append([InlineKeyboardButton("Mixdrop", url=mx_link)])
-
-        keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-
-        if not buttons:
-            await msg.edit_text(
-                text + "\n\n⚠️ <i>No upload server is ON. Use /active to turn one on.</i>",
-                disable_web_page_preview=True
-            )
-            return
-
-        await msg.edit_text(
-            text
-            + (_host_note("Streamtape", streamtape, copied_msg.id, None, st_link, None) if st_link else "")
-            + (_host_note("DoodStream", doodstream, copied_msg.id, None, dd_link, None) if dd_link else "")
-            + (_host_note("Mixdrop", mixdrop, copied_msg.id, None, mx_link, None) if mx_link else ""),
-            reply_markup=keyboard,
-            disable_web_page_preview=True
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("Streamtape", url=streamtape.stable_link(copied_msg.id))]]
         )
 
-        if st_link or dd_link or mx_link:
-            st_name = None if file_name == "Unknown File" else file_name
-            asyncio.create_task(
-                _hosts_push(msg, text, buttons, copied_msg.id, st_name, mime_type,
-                            {"st": st_link, "dd": dd_link, "mx": mx_link})
-            )
+        st_name = None if file_name == "Unknown File" else file_name
+        await msg.edit_text(
+            text + _links_text(copied_msg.id, st_name, None),
+            reply_markup=keyboard, disable_web_page_preview=True
+        )
+        asyncio.create_task(_upload_and_update(msg, text, keyboard, copied_msg.id, st_name, mime_type))
 
     except Exception as e:
         await msg.edit_text(f"<b>Error:</b> <code>{str(e)}</code>")
 
+
+async def _upload_and_update(msg, text, keyboard, file_id, file_name, mime_type):
+    try:
+        ok = bool(await streamtape.upload(file_id, file_name, mime_type))
+    except Exception as e:
+        print(f"Streamtape push error: {e}")
+        ok = False
+    try:
+        await msg.edit_text(
+            text + _links_text(file_id, file_name, ok),
+            reply_markup=keyboard, disable_web_page_preview=True
+        )
+    except Exception as e:
+        print(f"Link message edit error: {e}")
+        
