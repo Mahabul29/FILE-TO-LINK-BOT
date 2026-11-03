@@ -1,11 +1,9 @@
 import asyncio
 
-# Python 3.12+/3.14 no longer creates an event loop automatically,
-# and Pyrogram needs one at import time. Create it BEFORE importing pyrogram.
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
-from bot import Bot  # noqa: E402
+from bot import Bot
 
 
 async def main():
