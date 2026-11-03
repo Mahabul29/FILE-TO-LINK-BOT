@@ -6,7 +6,7 @@ API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
 # --- Database ---
-DATABASE_URI = os.environ.get("DATABASE_URI", os.environ.get("MONGO_URI", ""))
+DATABASE_URI = os.environ.get("DATABASE_URI", os.environ.get("DATABASE_URL", os.environ.get("MONGO_URI", "")))
 DATABASE_NAME = os.environ.get("DATABASE_NAME", os.environ.get("DB_NAME", "TelegramBot"))
 
 # Aliases to fix module import mismatches across files
