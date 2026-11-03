@@ -1,42 +1,30 @@
 import logging
 from aiohttp import web
 from config import PORT
-from web.video_play import video_play, stream_handler, download_handler
-from web.home import home_page
-from web.open_redirect import open_in_player
-from web.doodstream_redirect import dood_redirect, dood_info, dood_video
-from web.mixdrop_redirect import mix_redirect, mix_info, mix_video
+from web.dl import download_handler
 from web.streamtape_redirect import stable_redirect, stable_info, stable_video
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+async def _alive(request):
+    return web.Response(text="Bot is running")
+
+
 async def web_server(bot_client):
     app = web.Application(client_max_size=30 * 1024 * 1024)
     app["bot_client"] = bot_client
 
-    app.router.add_get("/", home_page)
-    app.router.add_get("/watch/{file_id}", video_play)
-    app.router.add_get("/stream/{file_id}", stream_handler)
-    app.router.add_get("/stream/{file_id}/{filename:.*}", stream_handler)
+    app.router.add_get("/", _alive)
+    # Only used by Streamtape to pull the file from Telegram (remote upload)
     app.router.add_get("/dl/{file_id}", download_handler)
-    app.router.add_get("/open/{player}/{file_id}", open_in_player)
+    # Your permanent links -> Streamtape
     app.router.add_get("/s/{file_id}", stable_redirect)
     app.router.add_get("/se/{file_id}", stable_redirect)
     app.router.add_get("/sinfo/{file_id}", stable_info)
     app.router.add_get("/sv/{file_id}", stable_video)
     app.router.add_get("/sv/{file_id}/{filename:.*}", stable_video)
-    app.router.add_get("/d/{file_id}", dood_redirect)
-    app.router.add_get("/de/{file_id}", dood_redirect)
-    app.router.add_get("/dinfo/{file_id}", dood_info)
-    app.router.add_get("/dv/{file_id}", dood_video)
-    app.router.add_get("/dv/{file_id}/{filename:.*}", dood_video)
-    app.router.add_get("/m/{file_id}", mix_redirect)
-    app.router.add_get("/me/{file_id}", mix_redirect)
-    app.router.add_get("/minfo/{file_id}", mix_info)
-    app.router.add_get("/mv/{file_id}", mix_video)
-    app.router.add_get("/mv/{file_id}/{filename:.*}", mix_video)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -44,4 +32,4 @@ async def web_server(bot_client):
     await site.start()
     logger.info(f"✅ Web server started on port {PORT}")
     return runner
-
+    
