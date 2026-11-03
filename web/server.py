@@ -19,6 +19,9 @@ async def web_server(bot_client):
     app.router.add_get("/", _alive)
     # Only used by Streamtape to pull the file from Telegram (remote upload)
     app.router.add_get("/dl/{file_id}", download_handler)
+    # Telegram-copy fallback: /sv/<id> redirects here while a file is being restored
+    app.router.add_get("/stream/{file_id}", download_handler)
+    app.router.add_get("/stream/{file_id}/{filename:.*}", download_handler)
     # Your permanent links -> Streamtape
     app.router.add_get("/s/{file_id}", stable_redirect)
     app.router.add_get("/se/{file_id}", stable_redirect)
@@ -32,4 +35,4 @@ async def web_server(bot_client):
     await site.start()
     logger.info(f"✅ Web server started on port {PORT}")
     return runner
-    
+
