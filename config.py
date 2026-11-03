@@ -24,24 +24,16 @@ ADMINS = [OWNER_ID]
 
 # --- Connection Settings ---
 PORT = int(os.environ.get("PORT", "8080"))
-FQDN = os.environ.get("FQDN", "filetolink-8klbbde4.b4a.run")
+# Your bot-hosting.net domain, no https://. All links are built from it.
+FQDN = os.environ.get("FQDN", "").replace("https://", "").replace("http://", "").strip().strip("/")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
 
-# Domain written into links people see (/s/, /sv/, /d/, /m/, /watch/, /dl/).
-# FQDN stays the address that Streamtape/DoodStream/Mixdrop download from when uploading
+# Domain written into links people see (/s/, /sv/).
+# FQDN stays the address that Streamtape downloads from when uploading
 # (it must point at THIS server). If PUBLIC_FQDN is empty, links use FQDN as before.
 PUBLIC_FQDN = os.environ.get("PUBLIC_FQDN", "").strip() or FQDN
 # Set HEAL_ENABLED=false on a server that should NOT auto re-upload deleted files.
 HEAL_ENABLED = os.environ.get("HEAL_ENABLED", "true").strip().lower() not in ("false", "0", "no")
-
-# --- External Players Configuration ---
-PLAYERS = {
-    "vlc":       {"package": "org.videolan.vlc",           "label": "ᴠʟᴄ ᴘʟᴀʏᴇʀ"},
-    "mx":        {"package": "com.mxtech.videoplayer.ad",  "label": "ᴍx ᴘʟᴀʏᴇʀ"},
-    "splayer":   {"package": "com.ttee.leeplayer",         "label": "ꜱᴘʟᴀʏᴇʀ"},
-    "playit":    {"package": "com.playit.videoplayer",     "label": "ᴘʟᴀʏɪᴛ"},
-    "evaplayer": {"package": "com.evaplayer.app",         "label": "ᴇᴠᴀᴘʟᴀʏᴇʀ"},
-}
 
 # --- Streamtape (auto upload + auto restore) ---
 # Get both from Streamtape -> Account Settings -> API login / key
@@ -56,20 +48,7 @@ UPLOAD_TIMEOUT_MIN = int(os.environ.get("UPLOAD_TIMEOUT_MIN", "120"))
 # How many files may upload to Streamtape at the same time
 UPLOAD_PARALLEL = max(1, int(os.environ.get("UPLOAD_PARALLEL", "2")))
 
-# --- DoodStream (auto upload + auto restore) ---
-# Get the API key from DoodStream -> Account Settings -> API
-DOODSTREAM_KEY = os.environ.get("DOODSTREAM_KEY", "").strip()
-# Domain used for DoodStream page/embed links (DoodStream changes domains often)
-DOODSTREAM_DOMAIN = os.environ.get("DOODSTREAM_DOMAIN", "doodstream.com").strip().replace("https://", "").strip("/")
-
-# --- Mixdrop (auto upload + auto restore) ---
-# Mixdrop -> Account -> API: your account e-mail and API key
-MIXDROP_EMAIL = os.environ.get("MIXDROP_EMAIL", "").strip()
-MIXDROP_KEY = os.environ.get("MIXDROP_KEY", "").strip()
-# Domain used for Mixdrop page/embed links (Mixdrop changes domains sometimes)
-MIXDROP_DOMAIN = os.environ.get("MIXDROP_DOMAIN", "mixdrop.ag").strip().replace("https://", "").strip("/")
-
-# How /sv/<id>, /dv/<id> and /mv/<id> (the direct-video link for apps) serves the Streamtape file:
+# How /sv/<id> (the direct-video link for apps) serves the Streamtape file:
 #   redirect = send the app straight to Streamtape's video URL (no bot bandwidth)
 #   proxy    = the bot streams it through itself (use this if redirect does not play)
 STREAM_MODE = os.environ.get("STREAM_MODE", "proxy").lower()
