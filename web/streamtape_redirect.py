@@ -145,7 +145,9 @@ async def stable_video(request):
     if state == "ok":
         # Streamtape's direct links are locked to the IP that asked for them (this server),
         # so the bot must stream the bytes itself; a redirect only works with STREAM_MODE=redirect.
-        if STREAM_MODE == "redirect":
+        # Browsers can follow the redirect to Streamtape; video apps (ExoPlayer/MX/VLC/custom apps)
+        # often cannot (IP-locked link, missing Referer, cross-domain redirect), so they get the proxy.
+        if STREAM_MODE == "redirect" and _is_browser(request):
             url = await streamtape.direct_url(rec["st_id"])
             if url:
                 raise web.HTTPFound(url)
