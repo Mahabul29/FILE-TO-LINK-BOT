@@ -1,66 +1,11 @@
 import asyncio
-import logging
-from pyrogram import Client
-from config import API_ID, API_HASH, BOT_TOKEN, BIN_CHANNEL, HEAL_ENABLED
-from web.server import web_server
-from utils import streamtape, doodstream, mixdrop
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Python 3.12+/3.14 no longer creates an event loop automatically,
+# and Pyrogram needs one at import time. Create it BEFORE importing pyrogram.
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
-
-class Bot(Client):
-    def __init__(self):
-        super().__init__(
-            name="FileToLinkBot",
-            api_id=API_ID,
-            api_hash=API_HASH,
-            bot_token=BOT_TOKEN,
-            plugins=dict(root="plugins")
-        )
-
-    async def start(self):
-        await super().start()
-        try:
-            await self.get_chat(BIN_CHANNEL)
-            print("✅ Connection to Bin Channel Verified")
-        except Exception as e:
-            print(f"❌ Bin Channel Error: {e}")
-
-        self.runner = await web_server(self)
-        print("✅ Web Server Started")
-
-        self.heal_task = None
-        if streamtape.enabled and HEAL_ENABLED:
-            self.heal_task = asyncio.create_task(streamtape.heal_loop())
-            print("✅ Streamtape auto-restore started")
-        else:
-            print("ℹ️ Streamtape auto-restore off (no keys, or HEAL_ENABLED=false)")
-
-        self.dood_task = None
-        if doodstream.enabled and HEAL_ENABLED:
-            self.dood_task = asyncio.create_task(doodstream.heal_loop())
-            print("✅ DoodStream auto-restore started")
-        else:
-            print("ℹ️ DoodStream auto-restore off (no key, or HEAL_ENABLED=false)")
-
-        self.mix_task = None
-        if mixdrop.enabled and HEAL_ENABLED:
-            self.mix_task = asyncio.create_task(mixdrop.heal_loop())
-            print("✅ Mixdrop auto-restore started")
-        else:
-            print("ℹ️ Mixdrop auto-restore off (no keys, or HEAL_ENABLED=false)")
-
-    async def stop(self, *args):
-        if getattr(self, "heal_task", None):
-            self.heal_task.cancel()
-        if getattr(self, "dood_task", None):
-            self.dood_task.cancel()
-        if getattr(self, "mix_task", None):
-            self.mix_task.cancel()
-        await super().stop()
-        await self.runner.cleanup()
-        print("🛑 Bot Stopped")
+from bot import Bot  # noqa: E402
 
 
 async def main():
@@ -68,10 +13,9 @@ async def main():
     await bot.start()
     await asyncio.Event().wait()
 
+
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop_policy().get_event_loop()
     try:
         loop.run_until_complete(main())
     except KeyboardInterrupt:
         pass
-        
