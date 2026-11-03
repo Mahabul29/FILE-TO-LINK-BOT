@@ -33,6 +33,7 @@ _ID_RE = re.compile(r"(?:streamtape|strtape|stape)\.[a-z.]+/(?:v|e)/([A-Za-z0-9_
 _locks = {}
 _upload_sem = asyncio.Semaphore(UPLOAD_PARALLEL)
 MAX_FAILS = 5
+GIVE_UP_RETRY_HOURS = 6   # after MAX_FAILS failures, still try again every few hours
 
 
 def _base():
@@ -271,10 +272,14 @@ async def heal_loop():
             # retry uploads that failed or got stuck (e.g. bot restarted mid-upload)
             for r in recs:
                 stale = r.get("status") == "uploading" and time.time() - r.get("updated", 0) > UPLOAD_TIMEOUT_MIN * 60
-                if (r.get("status") == "failed" or stale) and r.get("fails", 0) < MAX_FAILS:
+                if not (r.get("status") == "failed" or stale):
+                    continue
+                cooled = time.time() - r.get("updated", 0) > GIVE_UP_RETRY_HOURS * 3600
+                if r.get("fails", 0) < MAX_FAILS or cooled:
                     await heal_one(r["file_id"])
         except Exception as e:
             logger.error(f"[streamtape] heal loop error: {e}")
         await asyncio.sleep(HEAL_INTERVAL_MIN * 60)
 
 
+                           
