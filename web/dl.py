@@ -157,4 +157,5 @@ async def download_handler(request):
         logger.error(f"Download error: {e}")
         return web.Response(text=f"❌ Error: {e}", status=500)
 
-      
+
+    
