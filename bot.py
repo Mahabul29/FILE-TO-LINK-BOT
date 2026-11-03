@@ -1,5 +1,22 @@
 import asyncio
 import logging
+import os
+
+# Old files that crash the bot on start (stale copies left on the server).
+# They are removed automatically before the plugins are loaded.
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+for _stale in ("plugins/channel_handler.py", "plugins/dl.py", "web/stream.py"):
+    _path = os.path.join(_ROOT, _stale)
+    if _stale == "plugins/dl.py" and not os.path.exists(os.path.join(_ROOT, "web", "dl.py")):
+        continue  # only drop it once web/dl.py is in place
+    try:
+        os.remove(_path)
+        print(f"🧹 removed stale file: {_stale}")
+    except FileNotFoundError:
+        pass
+    except Exception as _e:
+        print(f"⚠️ could not remove {_stale}: {_e}")
+
 from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN, BIN_CHANNEL, HEAL_ENABLED, FQDN
 from web.server import web_server
