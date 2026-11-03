@@ -1,9 +1,9 @@
 import asyncio
 import logging
 from pyrogram import Client
-from config import API_ID, API_HASH, BOT_TOKEN, BIN_CHANNEL, HEAL_ENABLED
+from config import API_ID, API_HASH, BOT_TOKEN, BIN_CHANNEL, HEAL_ENABLED, FQDN
 from web.server import web_server
-from utils import streamtape, doodstream, mixdrop
+from utils import streamtape
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,6 +29,8 @@ class Bot(Client):
 
         self.runner = await web_server(self)
         print("✅ Web Server Started")
+        if not FQDN:
+            print("⚠️ FQDN is not set: add your bot-hosting.net domain in Environment")
 
         self.heal_task = None
         if streamtape.enabled and HEAL_ENABLED:
@@ -37,27 +39,10 @@ class Bot(Client):
         else:
             print("ℹ️ Streamtape auto-restore off (no keys, or HEAL_ENABLED=false)")
 
-        self.dood_task = None
-        if doodstream.enabled and HEAL_ENABLED:
-            self.dood_task = asyncio.create_task(doodstream.heal_loop())
-            print("✅ DoodStream auto-restore started")
-        else:
-            print("ℹ️ DoodStream auto-restore off (no key, or HEAL_ENABLED=false)")
-
-        self.mix_task = None
-        if mixdrop.enabled and HEAL_ENABLED:
-            self.mix_task = asyncio.create_task(mixdrop.heal_loop())
-            print("✅ Mixdrop auto-restore started")
-        else:
-            print("ℹ️ Mixdrop auto-restore off (no keys, or HEAL_ENABLED=false)")
 
     async def stop(self, *args):
         if getattr(self, "heal_task", None):
             self.heal_task.cancel()
-        if getattr(self, "dood_task", None):
-            self.dood_task.cancel()
-        if getattr(self, "mix_task", None):
-            self.mix_task.cancel()
         await super().stop()
         await self.runner.cleanup()
         print("🛑 Bot Stopped")
