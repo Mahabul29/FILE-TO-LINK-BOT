@@ -100,11 +100,33 @@ async def _open_upstream(session, st_id, range_header):
     return None
 
 
+def _parse_range(header, size):
+    """'bytes=a-b' / 'bytes=a-' / 'bytes=-n' -> (start, end), or None if unusable."""
+    try:
+        unit, _, spec = header.strip().partition("=")
+        if unit.strip().lower() != "bytes" or "," in spec or size <= 0:
+            return None
+        a, _, b = spec.strip().partition("-")
+        if a == "":
+            n = int(b)
+            return (max(0, size - n), size - 1) if n > 0 else None
+        start = int(a)
+        end = min(int(b) if b else size - 1, size - 1)
+        return (start, end) if start <= end and start < size else None
+    except Exception:
+        return None
+
+
 async def _proxy(request, st_id, name):
-    """Streams the Streamtape file through the bot (supports seeking). Returns None if Streamtape fails."""
+    """Streams the Streamtape file through the bot (supports seeking). Returns None if Streamtape fails.
+
+    Seek fix: if Streamtape ignores the Range header and answers 200 (whole file), the player would
+    restart the video from 0:00 on every skip. In that case the bot cuts the range itself and answers 206.
+    """
     session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60))
     try:
-        up = await _open_upstream(session, st_id, request.headers.get("Range"))
+        range_header = request.headers.get("Range")
+        up = await _open_upstream(session, st_id, range_header)
         if up is None:
             await session.close()
             return None
@@ -114,14 +136,41 @@ async def _proxy(request, st_id, name):
             "Content-Disposition": f'inline; filename="{(name or "video.mp4").encode("ascii", "ignore").decode() or "video.mp4"}"',
             "Cache-Control": "no-store",
         }
-        for h in ("Content-Length", "Content-Range"):
-            if up.headers.get(h):
-                out_headers[h] = up.headers[h]
-        resp = web.StreamResponse(status=up.status, headers=out_headers)
+        status = up.status
+        skip = 0
+        remaining = None  # bytes to send; None = send everything upstream gives
+        if range_header and up.status == 200:
+            try:
+                total = int(up.headers.get("Content-Length") or 0)
+            except ValueError:
+                total = 0
+            parsed = _parse_range(range_header, total)
+            if parsed:
+                start, end = parsed
+                skip, remaining, status = start, end - start + 1, 206
+                out_headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+                out_headers["Content-Length"] = str(remaining)
+        if status == up.status:
+            for h in ("Content-Length", "Content-Range"):
+                if up.headers.get(h):
+                    out_headers[h] = up.headers[h]
+        resp = web.StreamResponse(status=status, headers=out_headers)
         await resp.prepare(request)
         if request.method != "HEAD":
             async for chunk in up.content.iter_chunked(256 * 1024):
-                await resp.write(chunk)
+                if skip:
+                    if len(chunk) <= skip:
+                        skip -= len(chunk)
+                        continue
+                    chunk = chunk[skip:]
+                    skip = 0
+                if remaining is not None:
+                    chunk = chunk[:remaining]
+                    remaining -= len(chunk)
+                if chunk:
+                    await resp.write(chunk)
+                if remaining == 0:
+                    break
         await resp.write_eof()
         up.release()
         return resp
