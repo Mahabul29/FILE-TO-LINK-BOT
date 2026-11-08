@@ -137,7 +137,9 @@ async def _remote_upload(file_id, name):
             rows = [r for r in rows if _row_is_mine(r, code, file_id)]
             if any(re.search(r"error|fail", str(r.get("status", "")), re.I) for r in rows):
                 logger.warning(f"[lulustream] remote upload failed for {file_id}")
-                last_error[int(file_id)] = f"remote upload: {str(rows)[:100]}"
+                # keep only the useful part (status / error text), not the long urls
+                brief = [{k: v for k, v in r.items() if k not in ("remote_url", "file_code", "fld_id")} for r in rows]
+                last_error[int(file_id)] = f"remote upload: {str(brief)[:150]}"
                 await _cleanup_failed(code)
                 return None
         except Exception as e:
@@ -274,4 +276,3 @@ async def heal_loop():
         except Exception as e:
             logger.error(f"[lulustream] heal loop error: {e}")
         await asyncio.sleep(HEAL_INTERVAL_MIN * 60)
-      
