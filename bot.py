@@ -20,7 +20,7 @@ for _stale in ("plugins/channel_handler.py", "plugins/dl.py", "web/stream.py"):
 from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN, BIN_CHANNEL, HEAL_ENABLED, FQDN
 from web.server import web_server
-from utils import streamtape, lulustream
+from utils import streamtape
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,18 +56,11 @@ class Bot(Client):
         else:
             print("ℹ️ Streamtape auto-restore off (no keys, or HEAL_ENABLED=false)")
 
-        self.heal_task_lulu = None
-        if lulustream.enabled and HEAL_ENABLED:
-            self.heal_task_lulu = asyncio.create_task(lulustream.heal_loop())
-            print("✅ LuluStream auto-restore started")
-        else:
-            print("ℹ️ LuluStream auto-restore off (no LULUSTREAM_KEY, or HEAL_ENABLED=false)")
-
 
     async def stop(self, *args):
-        for t in (getattr(self, "heal_task", None), getattr(self, "heal_task_lulu", None)):
-            if t:
-                t.cancel()
+        t = getattr(self, "heal_task", None)
+        if t:
+            t.cancel()
         await super().stop()
         await self.runner.cleanup()
         print("🛑 Bot Stopped")
