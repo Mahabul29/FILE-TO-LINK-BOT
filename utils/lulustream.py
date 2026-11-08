@@ -72,10 +72,20 @@ async def file_status(codes):
         if j.get("status") == 200 and isinstance(j.get("result"), list):
             got = {}
             for r in j["result"]:
+                if not isinstance(r, dict):
+                    continue
+                # the API may call the field "file_code" or "filecode"
+                rc = r.get("file_code") or r.get("filecode")
+                if not rc:
+                    continue
                 try:
-                    got[str(r.get("file_code"))] = int(r.get("status", 404))
+                    got[str(rc)] = int(r.get("status", 404))
                 except (TypeError, ValueError):
                     pass
+            if not got and j["result"]:
+                # answer came back in a shape we cannot read: unknown, NEVER "deleted"
+                logger.warning(f"[lulustream] info answer not understood: {str(j['result'])[:200]}")
+                continue
             for c in chunk:
                 out[c] = got.get(c, 404)
         elif j.get("status") == 404 and len(chunk) == 1:
@@ -89,6 +99,15 @@ async def _cleanup_failed(code):
         await _api("/file/url_actions", delete_code=code)
     except Exception:
         pass
+
+
+def _row_is_mine(row, code, file_id):
+    if not isinstance(row, dict):
+        return False
+    for k in ("file_code", "filecode", "code"):
+        if str(row.get(k) or "") == str(code):
+            return True
+    return f"/dl/{file_id}" in " ".join(str(v) for v in row.values())
 
 
 async def _remote_upload(file_id, name):
@@ -112,6 +131,8 @@ async def _remote_upload(file_id, name):
                 return code
             q = await _api("/file/url_uploads", file_code=code)
             rows = q.get("result") if isinstance(q.get("result"), list) else []
+            # the queue lists every remote upload of the account: look only at OUR row
+            rows = [r for r in rows if _row_is_mine(r, code, file_id)]
             if any(re.search(r"error|fail", str(r.get("status", "")), re.I) for r in rows):
                 logger.warning(f"[lulustream] remote upload failed for {file_id}")
                 await _cleanup_failed(code)
@@ -248,3 +269,4 @@ async def heal_loop():
         except Exception as e:
             logger.error(f"[lulustream] heal loop error: {e}")
         await asyncio.sleep(HEAL_INTERVAL_MIN * 60)
+      
