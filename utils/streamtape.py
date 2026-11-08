@@ -30,6 +30,7 @@ API = "https://api.streamtape.com"
 enabled = bool(STREAMTAPE_LOGIN and STREAMTAPE_KEY)
 
 _ID_RE = re.compile(r"(?:streamtape|strtape|stape)\.[a-z.]+/(?:v|e)/([A-Za-z0-9_-]+)", re.I)
+last_error = {}   # file_id -> short reason of the last failed upload (shown in the bot message)
 _locks = {}
 _upload_sem = asyncio.Semaphore(UPLOAD_PARALLEL)
 MAX_FAILS = 5
@@ -107,6 +108,7 @@ async def _remote_upload(file_id, name):
     add = await _api("/remotedl/add", url=dl_link(file_id), name=name, folder=STREAMTAPE_FOLDER)
     if add.get("status") != 200 or not (add.get("result") or {}).get("id"):
         logger.warning(f"[streamtape] remotedl/add failed for {file_id}: {add.get('msg') or add.get('status')}")
+        last_error[int(file_id)] = f"add failed: {add.get('msg') or add.get('status')}"
         return None
     rid = add["result"]["id"]
 
@@ -128,10 +130,12 @@ async def _remote_upload(file_id, name):
         state = str(row.get("status", ""))
         if re.search(r"error|fail", state, re.I):
             logger.warning(f"[streamtape] remote upload failed for {file_id}: {state}")
+            last_error[int(file_id)] = f"remote upload: {state} {row.get('status') or ''}"[:120]
             return None
         if re.search(r"finish|complet|done", state, re.I):
             return await _find_by_name(name)
     logger.warning(f"[streamtape] upload timed out for {file_id}")
+    last_error[int(file_id)] = "timed out"
     return None
 
 
@@ -157,6 +161,7 @@ async def upload(file_id, name, mime=None, healing=False):
                 new_id = await _remote_upload(file_id, name)
             except Exception as e:
                 logger.error(f"[streamtape] upload error {file_id}: {e}")
+                last_error[int(file_id)] = f"error: {e}"[:120]
                 new_id = None
         if new_id:
             await db.upsert(file_id, st_id=new_id, status="ok", fails=0, last_check=time.time())
@@ -283,4 +288,5 @@ async def heal_loop():
 
 
 
-      
+
+  
