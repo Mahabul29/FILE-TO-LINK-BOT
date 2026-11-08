@@ -17,7 +17,7 @@ async def web_server(bot_client):
     app["bot_client"] = bot_client
 
     app.router.add_get("/", _alive)
-    # Only used by Streamtape / LuluStream to pull the file from Telegram (remote upload)
+    # Only used by Streamtape to pull the file from Telegram (remote upload)
     app.router.add_get("/dl/{file_id}", download_handler)
     # Telegram-copy fallback: /sv/<id> redirects here while a file is being restored
     app.router.add_get("/stream/{file_id}", download_handler)
@@ -25,9 +25,6 @@ async def web_server(bot_client):
     # Your permanent links -> Streamtape
     app.router.add_get("/s/{file_id}", stable_redirect)
     app.router.add_get("/se/{file_id}", stable_redirect)
-    # Same link but LuluStream first
-    app.router.add_get("/lulu/{file_id}", stable_redirect)
-    app.router.add_get("/lulue/{file_id}", stable_redirect)
     app.router.add_get("/sinfo/{file_id}", stable_info)
     app.router.add_get("/sv/{file_id}", stable_video)
     app.router.add_get("/sv/{file_id}/{filename:.*}", stable_video)
