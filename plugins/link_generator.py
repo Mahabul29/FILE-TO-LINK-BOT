@@ -1,4 +1,5 @@
 import asyncio
+import html
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import BIN_CHANNEL, FQDN, PUBLIC_FQDN, LULUSTREAM_LABEL
@@ -16,6 +17,10 @@ def _links_text(file_id, file_name, st):
         f"\n\n<b>Streamtape:</b> {_ICON[st['st']]}"
         f"\n<b>{LULUSTREAM_LABEL}:</b> {_ICON[st['lulu']]}"
     )
+    # show WHY an upload failed (so no console is needed to debug)
+    for key, label in (("st", "Streamtape"), ("lulu", LULUSTREAM_LABEL)):
+        if st[key] == "fail" and st.get(key + "_err"):
+            text += f"\n<code>{label}: {html.escape(str(st[key + '_err']))}</code>"
     if "ok" in (st["st"], st["lulu"]):
         text += (
             f"\n\n<b>Player link (paste in any video player / URL stream):</b>\n"
@@ -110,8 +115,10 @@ async def _upload_and_update(msg, text, keyboard, file_id, file_name, mime_type,
             print(f"{key} push error: {e}")
             ok = False
         state[key] = "ok" if ok else "fail"
+        if not ok:
+            state[key + "_err"] = mod.last_error.get(int(file_id)) or "unknown - see console log"
         await refresh()   # each host updates the message as soon as it finishes
 
     # both hosts upload at the same time, each pulling the same file from /dl/<id>
     await asyncio.gather(run("st", streamtape), run("lulu", lulustream))
-    
+
