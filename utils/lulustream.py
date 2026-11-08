@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 API = LULUSTREAM_API
 enabled = bool(LULUSTREAM_KEY)
 
+last_error = {}   # file_id -> short reason of the last failed upload (shown in the bot message)
 _locks = {}
 _upload_sem = asyncio.Semaphore(UPLOAD_PARALLEL)
 MAX_FAILS = 5
@@ -117,6 +118,7 @@ async def _remote_upload(file_id, name):
     code = res.get("filecode") if isinstance(res, dict) else None
     if add.get("status") != 200 or not code:
         logger.warning(f"[lulustream] upload/url failed for {file_id}: {add.get('msg') or add.get('status')}")
+        last_error[int(file_id)] = f"upload/url: {add.get('msg') or add.get('status')}"[:120]
         return None
 
     deadline = time.time() + UPLOAD_TIMEOUT_MIN * 60
@@ -135,11 +137,13 @@ async def _remote_upload(file_id, name):
             rows = [r for r in rows if _row_is_mine(r, code, file_id)]
             if any(re.search(r"error|fail", str(r.get("status", "")), re.I) for r in rows):
                 logger.warning(f"[lulustream] remote upload failed for {file_id}")
+                last_error[int(file_id)] = f"remote upload: {str(rows)[:100]}"
                 await _cleanup_failed(code)
                 return None
         except Exception as e:
             logger.warning(f"[lulustream] status check error: {e}")
     logger.warning(f"[lulustream] upload timed out for {file_id}")
+    last_error[int(file_id)] = "timed out"
     await _cleanup_failed(code)
     return None
 
@@ -160,6 +164,7 @@ async def upload(file_id, name, mime=None, healing=False):
                 code = await _remote_upload(file_id, name)
             except Exception as e:
                 logger.error(f"[lulustream] upload error {file_id}: {e}")
+                last_error[int(file_id)] = f"error: {e}"[:120]
                 code = None
         if code:
             await _set(file_id, lulu_id=code, lulu_status="ok", lulu_fails=0, lulu_last_check=time.time())
