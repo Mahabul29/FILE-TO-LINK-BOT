@@ -52,19 +52,3 @@ UPLOAD_PARALLEL = max(1, int(os.environ.get("UPLOAD_PARALLEL", "2")))
 #   redirect = send the app straight to Streamtape's video URL (no bot bandwidth)
 #   proxy    = the bot streams it through itself (use this if redirect does not play)
 STREAM_MODE = os.environ.get("STREAM_MODE", "proxy").lower()
-
-
-# --- LuluStream (auto upload + auto restore, works together with Streamtape) ---
-# Get the key from LuluStream -> Account Settings -> API key
-LULUSTREAM_KEY = os.environ.get("LULUSTREAM_KEY", "").strip()
-# Optional LuluStream folder ID (fld_id) where the bot puts files
-LULUSTREAM_FOLDER = os.environ.get("LULUSTREAM_FOLDER", "").strip()
-# Domain used for watch/embed pages
-LULUSTREAM_DOMAIN = os.environ.get("LULUSTREAM_DOMAIN", "lulustream.com").replace("https://", "").replace("http://", "").strip().strip("/")
-# true = also upload OLD files (sent before LuluStream was added) to LuluStream in the background
-LULUSTREAM_BACKFILL = os.environ.get("LULUSTREAM_BACKFILL", "false").strip().lower() in ("true", "1", "yes")
-# LuluStream API address
-LULUSTREAM_API = os.environ.get("LULUSTREAM_API", "https://lulustream.com/api").strip().rstrip("/")
-
-# Name shown in the bot message and button for the second host (e.g. LuluStream)
-LULUSTREAM_LABEL = os.environ.get("LULUSTREAM_LABEL", "LuluStream").strip() or "LuluStream"
