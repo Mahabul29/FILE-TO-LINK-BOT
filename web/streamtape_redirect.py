@@ -6,6 +6,13 @@ from database import streamtape_db as db
 from utils import streamtape
 
 
+def _down_response():
+    return web.Response(
+        text="❌ Streamtape is down. Try again later.",
+        status=503, headers={"Retry-After": "60"},
+    )
+
+
 async def _resolve(file_id):
     """
     Returns (record, state). state is 'ok' | 'restoring' | 'missing'.
@@ -13,6 +20,8 @@ async def _resolve(file_id):
     rec = await db.get(file_id)
     if not rec:
         return None, "missing"
+    if streamtape.is_down():
+        return rec, "down"        # Streamtape is down -> everything is down
     if streamtape.enabled and rec.get("status") == "ok" and rec.get("st_id"):
         alive = await streamtape.is_alive(file_id)
         if alive is False:
@@ -34,6 +43,8 @@ async def stable_redirect(request):
     rec, state = await _resolve(file_id)
     if state == "missing":
         return web.Response(text="❌ File not found", status=404)
+    if state == "down":
+        return _down_response()
     if state == "restoring":
         return web.Response(
             text="⏳ This file is being restored. Try again in a minute.",
@@ -90,13 +101,16 @@ async def _open_upstream(session, st_id, range_header):
         url = await streamtape.direct_url(st_id, fresh=attempt > 0)
         if not url:
             return None
+        if streamtape.is_down():
+            return None
         headers = {"Referer": "https://streamtape.com/", "User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"}
         if range_header:
             headers["Range"] = range_header
         try:
-            up = await session.get(url, headers=headers, allow_redirects=True)
+            up = await asyncio.wait_for(session.get(url, headers=headers, allow_redirects=True), timeout=15)
         except Exception:
-            continue
+            streamtape.mark_down(30)
+            return None
         ct = (up.headers.get("Content-Type") or "").lower()
         if up.status in (200, 206) and "text/html" not in ct:
             return up
@@ -188,13 +202,19 @@ async def _proxy(request, st_id, name):
 async def stable_video(request):
     """
     /sv/<file_id>[/<name>.mp4]  -> the real video file, playable in any video player / app.
-    The link never changes. Order: Streamtape -> Telegram copy (/stream/<id>),
-    so playback never breaks while Streamtape is down or a file is being restored.
+    The link never changes. Streams only from Streamtape; if Streamtape is down, this is down too.
     """
     file_id = request.match_info["file_id"]
     rec, state = await _resolve(file_id)
     if state == "missing":
         return web.Response(text="❌ File not found", status=404)
+    if state == "down":
+        return _down_response()
+    if state == "restoring":
+        return web.Response(
+            text="⏳ This file is being restored. Try again in a minute.",
+            status=503, headers={"Retry-After": "60"},
+        )
 
     if state == "ok":
         st_id = rec["st_id"]
@@ -208,5 +228,6 @@ async def stable_video(request):
         if resp is not None:
             return resp
 
-    # restoring / Streamtape has a problem -> play from the Telegram copy
-    raise web.HTTPFound(f"/stream/{file_id}")
+    # Streamtape failed while opening -> nothing plays (Telegram is never used for streaming)
+    return _down_response()
+    
