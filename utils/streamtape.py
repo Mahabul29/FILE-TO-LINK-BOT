@@ -77,11 +77,31 @@ def make_name(name, mime, file_id):
     return name
 
 
-async def _api(path, **params):
+# --- Circuit breaker: when Streamtape is down, skip it for a while and use the Telegram copy ---
+_down_until = 0.0
+DOWN_COOLDOWN = 60  # seconds
+
+
+def is_down():
+    return time.time() < _down_until
+
+
+def mark_down(seconds=DOWN_COOLDOWN):
+    global _down_until
+    _down_until = time.time() + seconds
+    logger.warning(f"[streamtape] looks DOWN - streaming from Telegram for {seconds}s")
+
+
+def mark_up():
+    global _down_until
+    _down_until = 0.0
+
+
+async def _api(path, _timeout=60, **params):
     params["login"] = STREAMTAPE_LOGIN
     params["key"] = STREAMTAPE_KEY
     params = {k: v for k, v in params.items() if v not in (None, "")}
-    timeout = aiohttp.ClientTimeout(total=60)
+    timeout = aiohttp.ClientTimeout(total=_timeout, sock_connect=min(_timeout, 8))
     async with aiohttp.ClientSession(timeout=timeout) as s:
         async with s.get(f"{API}{path}", params=params) as r:
             return await r.json(content_type=None)
@@ -174,13 +194,13 @@ async def upload(file_id, name, mime=None, healing=False):
         return None
 
 
-async def file_status(ids):
+async def file_status(ids, _timeout=60):
     """{st_id: http-like status}. Missing ids are left out when the API call itself failed."""
     out = {}
     for i in range(0, len(ids), 100):
         chunk = ids[i:i + 100]
         try:
-            j = await _api("/file/info", file=",".join(chunk))
+            j = await _api("/file/info", _timeout=_timeout, file=",".join(chunk))
         except Exception as e:
             logger.warning(f"[streamtape] info error: {e}")
             continue
@@ -214,7 +234,9 @@ async def direct_url(st_id, fresh=False):
         if hit and hit[1] > time.time():
             return hit[0]
         try:
-            t = await _api("/file/dlticket", file=st_id)
+            if is_down():
+                return None
+            t = await _api("/file/dlticket", _timeout=10, file=st_id)
             if t.get("status") != 200 or not t.get("result"):
                 logger.warning(f"[streamtape] dlticket failed for {st_id}: {t.get('msg') or t.get('status')}")
                 return None
@@ -222,7 +244,7 @@ async def direct_url(st_id, fresh=False):
             wait = int(t["result"].get("wait_time") or 0)
             if wait:
                 await asyncio.sleep(min(wait, 20))
-            d = await _api("/file/dl", file=st_id, ticket=ticket)
+            d = await _api("/file/dl", _timeout=10, file=st_id, ticket=ticket)
             if d.get("status") != 200 or not (d.get("result") or {}).get("url"):
                 logger.warning(f"[streamtape] dl failed for {st_id}: {d.get('msg') or d.get('status')}")
                 return None
@@ -230,7 +252,8 @@ async def direct_url(st_id, fresh=False):
             _direct_cache[st_id] = (url, time.time() + 1800)
             return url
         except Exception as e:
-            logger.error(f"[streamtape] direct url error {st_id}: {e}")
+            logger.error(f"[streamtape] direct url error {st_id}: {e!r}")
+            mark_down()
             return None
 
 
@@ -241,9 +264,10 @@ async def is_alive(file_id):
         return None
     if time.time() - rec.get("last_check", 0) < 600:
         return rec.get("status") == "ok"
-    st = await file_status([rec["st_id"]])
+    st = await file_status([rec["st_id"]], _timeout=8)
     code = st.get(rec["st_id"])
     if code is None:
+        mark_down(30)
         return None
     await db.upsert(file_id, last_check=time.time())
     return code == 200
