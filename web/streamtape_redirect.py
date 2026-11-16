@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import aiohttp
 from aiohttp import web
 from config import STREAM_MODE
 from database import streamtape_db as db
 from utils import streamtape
+
+logger = logging.getLogger(__name__)
 
 
 def _down_response():
@@ -101,19 +104,18 @@ async def _open_upstream(session, st_id, range_header):
         url = await streamtape.direct_url(st_id, fresh=attempt > 0)
         if not url:
             return None
-        if streamtape.is_down():
-            return None
         headers = {"Referer": "https://streamtape.com/", "User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"}
         if range_header:
             headers["Range"] = range_header
         try:
-            up = await asyncio.wait_for(session.get(url, headers=headers, allow_redirects=True), timeout=15)
-        except Exception:
-            streamtape.mark_down(30)
-            return None
+            up = await asyncio.wait_for(session.get(url, headers=headers, allow_redirects=True), timeout=20)
+        except Exception as e:
+            logger.warning(f"[sv] upstream open failed (attempt {attempt}): {e!r}")
+            continue
         ct = (up.headers.get("Content-Type") or "").lower()
         if up.status in (200, 206) and "text/html" not in ct:
             return up
+        logger.warning(f"[sv] bad upstream answer: status={up.status} type={ct}")
         up.release()
         streamtape.forget_direct(st_id)
     return None
@@ -206,6 +208,8 @@ async def stable_video(request):
     """
     file_id = request.match_info["file_id"]
     rec, state = await _resolve(file_id)
+    logger.info(f"[sv] {request.method} {request.path} state={state} range={request.headers.get('Range')} "
+                f"ua={request.headers.get('User-Agent')!r} accept={request.headers.get('Accept')!r}")
     if state == "missing":
         return web.Response(text="❌ File not found", status=404)
     if state == "down":
