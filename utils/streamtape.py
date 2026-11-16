@@ -236,7 +236,7 @@ async def direct_url(st_id, fresh=False):
         try:
             if is_down():
                 return None
-            t = await _api("/file/dlticket", _timeout=10, file=st_id)
+            t = await _api("/file/dlticket", _timeout=20, file=st_id)
             if t.get("status") != 200 or not t.get("result"):
                 logger.warning(f"[streamtape] dlticket failed for {st_id}: {t.get('msg') or t.get('status')}")
                 return None
@@ -244,7 +244,7 @@ async def direct_url(st_id, fresh=False):
             wait = int(t["result"].get("wait_time") or 0)
             if wait:
                 await asyncio.sleep(min(wait, 20))
-            d = await _api("/file/dl", _timeout=10, file=st_id, ticket=ticket)
+            d = await _api("/file/dl", _timeout=20, file=st_id, ticket=ticket)
             if d.get("status") != 200 or not (d.get("result") or {}).get("url"):
                 logger.warning(f"[streamtape] dl failed for {st_id}: {d.get('msg') or d.get('status')}")
                 return None
@@ -264,10 +264,9 @@ async def is_alive(file_id):
         return None
     if time.time() - rec.get("last_check", 0) < 600:
         return rec.get("status") == "ok"
-    st = await file_status([rec["st_id"]], _timeout=8)
+    st = await file_status([rec["st_id"]], _timeout=15)
     code = st.get(rec["st_id"])
     if code is None:
-        mark_down(30)
         return None
     await db.upsert(file_id, last_check=time.time())
     return code == 200
