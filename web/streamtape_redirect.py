@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import aiohttp
 from aiohttp import web
 from config import STREAM_MODE
@@ -7,6 +8,11 @@ from database import streamtape_db as db
 from utils import streamtape
 
 logger = logging.getLogger(__name__)
+
+# Old /sv/ links opened in a normal browser are sent to Streamtape's embed player instead of being
+# streamed through this server (saves bandwidth). Real players (ExoPlayer / VLC / apps) still get
+# the raw video from /sv/ as before. Set SV_REDIRECT_BROWSERS=false to turn this off.
+SV_REDIRECT_BROWSERS = os.environ.get("SV_REDIRECT_BROWSERS", "true").strip().lower() not in ("false", "0", "no")
 
 
 def _down_response():
@@ -222,6 +228,9 @@ async def stable_video(request):
 
     if state == "ok":
         st_id = rec["st_id"]
+        # Old /sv/ link opened in a browser -> Streamtape embed player (no bandwidth on this server)
+        if SV_REDIRECT_BROWSERS and _is_browser(request):
+            raise web.HTTPFound(streamtape.streamtape_url(st_id, rec.get("name"), True))
         # Direct links are locked to the IP that asked for them (this server), so the bot
         # streams the bytes itself; a redirect only works with STREAM_MODE=redirect.
         if STREAM_MODE == "redirect" and _is_browser(request):
@@ -234,4 +243,4 @@ async def stable_video(request):
 
     # Streamtape failed while opening -> nothing plays (Telegram is never used for streaming)
     return _down_response()
-    
+
