@@ -1,10 +1,15 @@
 import asyncio
 import html
+import os
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import BIN_CHANNEL, FQDN, PUBLIC_FQDN
 from database.files_db import save_file
 from utils import streamtape
+
+# Set SHOW_SV_LINK=true in the Environment tab if you ever want the old /sv/ proxy link shown again.
+# Default is false: /sv/ sends every video byte through THIS server, /se/ does not.
+SHOW_SV_LINK = os.environ.get("SHOW_SV_LINK", "false").strip().lower() in ("true", "1", "yes")
 
 _ICON = {"wait": "⏳ uploading...", "ok": "✅ ready", "fail": "❌ failed, auto retry"}
 
@@ -19,10 +24,17 @@ def _links_text(file_id, file_name, state, err=None):
     if state == "fail" and err:
         text += f"\n<code>{html.escape(str(err))}</code>"
     if state == "ok":
+        # /se/ redirects straight to Streamtape's embed player: the video goes from Streamtape to
+        # the viewer, so it uses NO bandwidth on this server (CastFlix plays it in its embed player).
         text += (
-            f"\n\n<b>Player link (paste in any video player / URL stream):</b>\n"
-            f"{streamtape.video_link(file_id, file_name)}"
+            f"\n\n<b>Embed link (CastFlix / browser, no server bandwidth):</b>\n"
+            f"{streamtape.stable_link(file_id, embed=True)}"
         )
+        if SHOW_SV_LINK:
+            text += (
+                f"\n\n<b>Proxy video link (uses server bandwidth):</b>\n"
+                f"{streamtape.video_link(file_id, file_name)}"
+            )
     return text
 
 
@@ -100,4 +112,4 @@ async def _upload_and_update(msg, text, keyboard, file_id, file_name, mime_type)
         )
     except Exception as e:
         print(f"Link message edit error: {e}")
-        
+
